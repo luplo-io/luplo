@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "luplo": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/luplo", "python", "-m", "luplo.mcp"],
+      "env": {
+        "LUPLO_DB_URL": "postgresql://USER:PASSWORD@localhost/luplo"
+      }
+    }
+  }
+}
