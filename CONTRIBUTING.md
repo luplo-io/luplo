@@ -12,7 +12,7 @@ you need to get started.
 ## Setup
 
 ```bash
-git clone https://github.com/luplo-io/cli.git luplo
+git clone https://github.com/luplo-io/luplo.git luplo
 cd luplo
 uv sync --extra dev
 

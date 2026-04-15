@@ -97,5 +97,5 @@ Design specs live in Notion (3 pages). Code follows them; if code and Notion div
 - **Build**: Hatchling (src layout)
 - **Package**: `src/luplo/`
 - **PyPI**: luplo 0.0.1
-- **GitHub**: luplo-io/cli
+- **GitHub**: luplo-io/luplo
 - **License**: AGPL-3.0-or-later + CLA

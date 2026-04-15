@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "hanyul99" }]
-urls = { Homepage = "https://github.com/luplo-io/cli" }
+urls = { Homepage = "https://github.com/luplo-io/luplo" }
 dependencies = [
     "typer>=0.15",
     "psycopg[binary]>=3.2",
