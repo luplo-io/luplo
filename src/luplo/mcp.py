@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import AsyncIterator
 
 from mcp.server.fastmcp import FastMCP
@@ -75,9 +76,13 @@ something:
 - Looking for organizational rules, must-do/must-not → search items with
   type=policy
 - Looking for spec documents, RFCs → search items with type=document
+- Looking for cached external web references (URLs) → search items with
+  type=research. Research items carry source_url and an expires_at TTL;
+  a stale/expired hit is still a useful pointer but flag it.
 - Recording new information → use the appropriate create tool with the matching
   item_type. Always pass the user's exact words in the rationale/content field;
-  do not paraphrase.
+  do not paraphrase. When saving research, source_url is required (a research
+  item without a URL is a silent error, rejected by the backend).
 
 # How to present results
 
@@ -245,6 +250,8 @@ async def luplo_item_upsert(
     tags: list[str] | None = None,
     work_unit_id: str = "",
     supersedes_id: str = "",
+    source_url: str = "",
+    expires_at: str = "",
     actor_id: str = "claude",
 ) -> str:
     """Create or update (supersede) an item.
@@ -255,16 +262,33 @@ async def luplo_item_upsert(
     Args:
         title: Item title.
         project_id: Project scope.
-        item_type: One of decision, knowledge, policy, document.
+        item_type: One of decision, knowledge, policy, document, research.
         body: Item body text.
         rationale: Why this decision was made.
         system_ids: Systems this item relates to.
         tags: Free-form tags.
         work_unit_id: Link to an active work unit.
         supersedes_id: ID of item this supersedes (for edits).
+        source_url: Required when item_type='research' (the cached URL).
+            Optional for other types.
+        expires_at: ISO-8601 timestamp for cache expiry. When omitted and
+            item_type='research', defaults to now + research_ttl_days from
+            config (90 days default).
         actor_id: Who created this.
     """
     b = await _get_backend()
+
+    expires_dt: datetime | None = None
+    if expires_at:
+        expires_dt = datetime.fromisoformat(expires_at)
+        if expires_dt.tzinfo is None:
+            expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+    elif item_type == "research":
+        cfg = load_config()
+        expires_dt = datetime.now(timezone.utc) + timedelta(
+            days=cfg.research_ttl_days
+        )
+
     item = await b.create_item(ItemCreate(
         project_id=project_id,
         actor_id=_resolve_actor(actor_id),
@@ -276,6 +300,8 @@ async def luplo_item_upsert(
         tags=tags or [],
         work_unit_id=work_unit_id or None,
         supersedes_id=supersedes_id or None,
+        source_url=source_url or None,
+        expires_at=expires_dt,
     ))
     action = "Updated" if supersedes_id else "Created"
     return f"{action} {item.item_type}: {item.title} (id: {item.id})"

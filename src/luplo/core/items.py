@@ -16,6 +16,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from luplo.core import item_types as _item_types
+from luplo.core.errors import ValidationError
 from luplo.core.models import Item, ItemCreate
 
 _ITEM_FIELDS: frozenset[str] = frozenset(f.name for f in dataclasses.fields(Item))
@@ -99,6 +100,13 @@ async def create_item(conn: AsyncConnection[Any], data: ItemCreate) -> Item:
     # both surface as 4xx in the route layer.
     await _item_types.validate_context(conn, data.item_type, data.context)
 
+    # Research items must carry a source_url. DB has a CHECK constraint as
+    # the ultimate guard, but raise early here for a clean error message.
+    if data.item_type == "research" and not data.source_url:
+        raise ValidationError(
+            "item_type='research' requires source_url (the cached URL)"
+        )
+
     item_id = str(uuid.uuid4())
 
     params: dict[str, Any] = {
@@ -118,6 +126,7 @@ async def create_item(conn: AsyncConnection[Any], data: ItemCreate) -> Item:
         "alternatives": Jsonb(data.alternatives) if data.alternatives else None,
         "confidence": data.confidence,
         "supersedes_id": data.supersedes_id,
+        "expires_at": data.expires_at,
         "context": Jsonb(data.context or {}),
         "source_type": data.source_type,
         "source_page_id": data.source_page_id,
@@ -132,14 +141,14 @@ async def create_item(conn: AsyncConnection[Any], data: ItemCreate) -> Item:
         "  id, project_id, item_type, title, body, source_url,"
         "  parent_item_id, work_unit_id, source_ref, actor_id,"
         "  system_ids, tags, rationale, alternatives, confidence,"
-        "  supersedes_id, context, source_type, source_page_id,"
+        "  supersedes_id, expires_at, context, source_type, source_page_id,"
         "  stable_section_key, current_section_path, start_anchor,"
         "  content_hash, search_tsv"
         ") VALUES ("
         "  %(id)s, %(project_id)s, %(item_type)s, %(title)s, %(body)s, %(source_url)s,"
         "  %(parent_item_id)s, %(work_unit_id)s, %(source_ref)s, %(actor_id)s,"
         "  %(system_ids)s, %(tags)s, %(rationale)s, %(alternatives)s, %(confidence)s,"
-        "  %(supersedes_id)s, %(context)s,"
+        "  %(supersedes_id)s, %(expires_at)s, %(context)s,"
         "  %(source_type)s, %(source_page_id)s,"
         "  %(stable_section_key)s, %(current_section_path)s, %(start_anchor)s,"
         "  %(content_hash)s,"

@@ -221,6 +221,7 @@ class ItemCreate:
     alternatives: Any = None
     confidence: str | None = None
     supersedes_id: str | None = None
+    expires_at: datetime | None = None
     # Type-specific free-form fields. Validated against item_types.schema.
     context: dict[str, Any] = field(default_factory=dict)
     # sync fields — only set by sync pipeline

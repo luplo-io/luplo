@@ -83,6 +83,8 @@ class RemoteBackend:
             "tags": data.tags,
             "work_unit_id": data.work_unit_id,
             "supersedes_id": data.supersedes_id,
+            "source_url": data.source_url,
+            "expires_at": data.expires_at.isoformat() if data.expires_at else None,
         })
         resp.raise_for_status()
         return _parse_item(resp.json())

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -22,6 +23,8 @@ class ItemCreateBody(BaseModel):
     tags: list[str] = []
     work_unit_id: str | None = None
     supersedes_id: str | None = None
+    source_url: str | None = None
+    expires_at: datetime | None = None
     source_type: str | None = None
     source_page_id: str | None = None
 
@@ -38,6 +41,8 @@ def _serialize(item: Any) -> dict[str, Any]:
         "tags": item.tags,
         "supersedes_id": item.supersedes_id,
         "work_unit_id": item.work_unit_id,
+        "source_url": item.source_url,
+        "expires_at": item.expires_at.isoformat() if item.expires_at else None,
         "created_at": item.created_at.isoformat(),
         "updated_at": item.updated_at.isoformat(),
     }
@@ -63,6 +68,8 @@ async def create_item(
         tags=body.tags,
         work_unit_id=body.work_unit_id,
         supersedes_id=body.supersedes_id,
+        source_url=body.source_url,
+        expires_at=body.expires_at,
         source_type=body.source_type,
         source_page_id=body.source_page_id,
     ))

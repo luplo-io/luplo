@@ -16,6 +16,7 @@ except ImportError:
 
 CONFIG_FILENAME = ".luplo"
 DEFAULT_DB_URL = "postgresql://localhost/luplo"
+DEFAULT_RESEARCH_TTL_DAYS = 90
 
 
 @dataclass(slots=True)
@@ -30,6 +31,7 @@ class LuploConfig:
     actor_id: str = ""
     actor_name: str = ""
     actor_email: str = ""
+    research_ttl_days: int = DEFAULT_RESEARCH_TTL_DAYS
 
 
 def find_config_file() -> Path | None:
@@ -68,6 +70,11 @@ def load_config() -> LuploConfig:
         cfg.actor_id = actor.get("id", cfg.actor_id)
         cfg.actor_name = actor.get("name", cfg.actor_name)
         cfg.actor_email = actor.get("email", cfg.actor_email)
+
+        research = data.get("research", {})
+        cfg.research_ttl_days = int(
+            research.get("ttl_days", cfg.research_ttl_days)
+        )
 
     # Layer 2: env vars override
     cfg.db_url = os.environ.get("LUPLO_DB_URL", cfg.db_url)
