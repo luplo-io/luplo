@@ -9,15 +9,11 @@ optional pgvector ranking.
 
 ## Getting started
 
-```bash
-uv sync
-createdb luplo
-alembic upgrade head
-uv run lp --help
-```
+See the {doc}`quickstart` for a five-minute tour — install, open a
+work unit, save a decision, and connect Claude via MCP.
 
-See [CONTRIBUTING.md](https://github.com/luplo-io/luplo/blob/main/CONTRIBUTING.md)
-for the full development guide.
+For the full development workflow, see
+[CONTRIBUTING.md](https://github.com/luplo-io/luplo/blob/main/CONTRIBUTING.md).
 
 ## Interfaces
 
@@ -42,5 +38,6 @@ module layout and every public function/class.
 :maxdepth: 2
 :hidden:
 
+quickstart
 api/index
 ```
