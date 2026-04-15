@@ -1,0 +1,88 @@
+[project]
+name = "luplo"
+version = "0.0.1"
+description = "Long-term memory for engineering decisions."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "hanyul99" }]
+urls = { Homepage = "https://github.com/luplo-io/cli" }
+dependencies = [
+    "typer>=0.15",
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
+    "mcp>=1.0",
+    "httpx>=0.28",
+    "alembic>=1.15",
+    "sqlalchemy>=2.0",
+    "keyring>=25.0",
+    "jsonschema>=4.23",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "authlib>=1.4",
+    "pyjwt[crypto]>=2.9",
+    "argon2-cffi>=23.1",
+    "pydantic-settings>=2.6",
+    "jinja2>=3.1",
+    "itsdangerous>=2.2",
+]
+vector-local = [
+    "sentence-transformers>=3.4",
+    "pgvector>=0.3",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "pyright>=1.1",
+]
+
+[project.scripts]
+lp = "luplo.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/luplo"]
+
+# ── Ruff ─────────────────────────────────────────────────────────
+
+[tool.ruff]
+target-version = "py312"
+line-length = 99
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "RUF", # ruff-specific
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["luplo"]
+
+# ── Pyright ──────────────────────────────────────────────────────
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["src"]
+
+# ── Pytest ───────────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "knowledge context",
+  "description": "Free-form metadata for items.context when item_type='knowledge'. additionalProperties=true (P6).",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": true
+}

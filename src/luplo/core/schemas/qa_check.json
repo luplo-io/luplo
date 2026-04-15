@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "qa_check context",
+  "description": "Strict schema for items.context when item_type='qa_check'. additionalProperties=false (P6 — qa_check carries domain invariants).",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "passed", "failed", "blocked", "skipped"]
+    },
+    "coverage": {
+      "type": "string",
+      "enum": ["auto_partial", "human_only"]
+    },
+    "areas": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["vfx", "sfx", "ux", "edge_case", "perf", "a11y", "sec"]
+      }
+    },
+    "target_item_ids": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "target_task_ids": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "assignee": {
+      "type": "string",
+      "description": "Actor UUID assigned to perform the check."
+    },
+    "evidence": {
+      "type": "string",
+      "description": "Free-form note set when status transitions to 'passed'."
+    },
+    "fail_reason": {
+      "type": "string"
+    },
+    "blocked_reason": {
+      "type": "string"
+    },
+    "passed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revalidation_reason": {
+      "type": "string",
+      "description": "Set by the supersede trigger when status auto-resets to 'pending'."
+    }
+  },
+  "required": ["status", "coverage"],
+  "additionalProperties": false
+}

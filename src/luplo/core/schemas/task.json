@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "task context",
+  "description": "Strict schema for items.context when item_type='task'. additionalProperties=false (P6 — task carries domain invariants).",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["proposed", "in_progress", "done", "blocked", "skipped"]
+    },
+    "sort_order": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "systems": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "summary": {
+      "type": "string"
+    },
+    "blocked_reason": {
+      "type": "string"
+    },
+    "skip_reason": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["status"],
+  "additionalProperties": false
+}
