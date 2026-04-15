@@ -22,6 +22,10 @@ pip-wheel-metadata/
 venv/
 env/
 
+# Sphinx docs build output
+docs/_build/
+docs/api/
+
 # Testing / type-checking caches
 .pytest_cache/
 .ruff_cache/
