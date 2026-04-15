@@ -1,5 +1,9 @@
 # luplo
 
+[![Documentation Status](https://readthedocs.org/projects/luplo/badge/?version=latest)](https://luplo.readthedocs.io/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+
 > Long-term memory for engineering decisions.
 
 PMs brief the work. Agents (or humans) execute it. Decisions and knowledge 
