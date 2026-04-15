@@ -1,0 +1,43 @@
+# luplo local config (contains DB credentials)
+.luplo
+
+# MCP server config (may contain connection strings/secrets)
+.mcp.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing / type-checking caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
