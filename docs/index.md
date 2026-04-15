@@ -1,43 +1,74 @@
 # luplo
 
-Long-term memory for engineering decisions.
+**Long-term memory for engineering decisions.**
 
-luplo is a CLI + MCP server that tracks decisions, knowledge, policies,
-documents, tasks, and QA checks across coding sessions. It is backed by
-PostgreSQL with full-text search (tsquery + glossary expansion) and
-optional pgvector ranking.
+luplo is a CLI + MCP server + HTTP server for tracking decisions,
+knowledge, policies, documents, tasks, and QA checks across coding
+sessions. It is backed by PostgreSQL with full-text search
+(`tsquery` + glossary expansion) and optional pgvector reranking.
 
-## Getting started
+Three interfaces share one core:
 
-See the {doc}`quickstart` for a five-minute tour — install, open a
-work unit, save a decision, and connect Claude via MCP.
+- `lp` — the human-facing CLI (typer).
+- An **MCP server** on stdio, usable from any
+  [MCP-compatible client](https://modelcontextprotocol.io/clients)
+  (Claude Code, Claude Desktop, Cursor, Zed, custom).
+- An optional **FastAPI HTTP server** for multi-user deployments.
 
-For the full development workflow, see
-[CONTRIBUTING.md](https://github.com/luplo-io/luplo/blob/main/CONTRIBUTING.md).
+## Where to start
 
-## Interfaces
+::::{grid} 1 2 2 2
+:gutter: 3
 
-luplo exposes three interfaces on a shared core:
+:::{grid-item-card} Quickstart
+:link: quickstart
+:link-type: doc
 
-- **CLI** (`lp`) — human-facing commands via typer.
-- **MCP server** — stdio adapter for Claude Desktop/Code.
-- **HTTP server** — FastAPI + OAuth for the Remote backend (via the
-  `server` extra).
+Install uv + Postgres, initialise a project, record and recall a
+decision, wire up an MCP client — in about five minutes.
+:::
 
-## API reference
+:::{grid-item-card} Concepts
+:link: concepts/index
+:link-type: doc
 
-See the auto-generated [API reference](api/luplo/index) for the full
-module layout and every public function/class.
+Why luplo refuses to be a framework, what honesty-over-coverage means
+for search, how the twelve-table schema fits together.
+:::
 
-## Source
+:::{grid-item-card} Guides
+:link: guides/index
+:link-type: doc
 
-- Repository: <https://github.com/luplo-io/luplo>
-- License: AGPL-3.0-or-later + CLA
+How-tos for work units, tasks & QA, connecting MCP clients, running
+the Remote server, operating the worker.
+:::
+
+:::{grid-item-card} Reference
+:link: reference/index
+:link-type: doc
+
+CLI flags, MCP tool surface, every configuration variable, and the
+auto-generated API reference.
+:::
+
+::::
+
+## Project
+
+- Source — <https://github.com/luplo-io/luplo>
+- License — {doc}`AGPL-3.0-or-later <project/license>` (CLA coming)
+- Changelog — {doc}`project/changelog`
+- Contributing — {doc}`project/contributing`
 
 ```{toctree}
-:maxdepth: 2
 :hidden:
+:maxdepth: 1
 
 quickstart
-api/index
+concepts/index
+guides/index
+reference/index
+project/index
+API reference <api/index>
 ```

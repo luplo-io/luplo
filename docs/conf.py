@@ -21,6 +21,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "myst_parser",
     "autoapi.extension",
+    "sphinx_design",
 ]
 
 source_suffix = {
