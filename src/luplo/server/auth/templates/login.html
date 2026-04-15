@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>luplo — Sign in</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+               background: #0d1117; color: #e6edf3; display: flex;
+               align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+                padding: 32px; min-width: 320px; }
+        h1 { margin: 0 0 16px; font-size: 20px; }
+        label { display: block; font-size: 13px; margin: 12px 0 4px; color: #8b949e; }
+        input[type="email"], input[type="password"] {
+            width: 100%; padding: 8px 12px; border: 1px solid #30363d;
+            background: #0d1117; color: #e6edf3; border-radius: 4px;
+            font-size: 14px; box-sizing: border-box;
+        }
+        button { width: 100%; padding: 10px; margin-top: 16px; border: none;
+                 border-radius: 4px; background: #238636; color: white;
+                 font-size: 14px; cursor: pointer; }
+        button:hover { background: #2ea043; }
+        .oauth { margin-top: 16px; border-top: 1px solid #30363d; padding-top: 16px; }
+        .oauth a { display: block; padding: 8px; margin: 8px 0; text-align: center;
+                   border: 1px solid #30363d; border-radius: 4px; color: #e6edf3;
+                   text-decoration: none; font-size: 14px; }
+        .oauth a:hover { background: #1f242c; }
+        .error { color: #f85149; font-size: 13px; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>luplo</h1>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="POST" action="/auth/login">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required autofocus>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">Sign in</button>
+        </form>
+        {% if github_enabled or google_enabled %}
+        <div class="oauth">
+            {% if github_enabled %}<a href="/auth/oauth/github/start">Sign in with GitHub</a>{% endif %}
+            {% if google_enabled %}<a href="/auth/oauth/google/start">Sign in with Google</a>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
