@@ -1,12 +1,17 @@
 [project]
 name = "luplo"
-version = "0.0.1"
+version = "0.1.0"
 description = "Long-term memory for engineering decisions."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "hanyul99" }]
-urls = { Homepage = "https://github.com/luplo-io/luplo" }
+
+[project.urls]
+Homepage = "https://github.com/luplo-io/luplo"
+Documentation = "https://luplo.readthedocs.io"
+Changelog = "https://github.com/luplo-io/luplo/blob/main/CHANGELOG.md"
+Issues = "https://github.com/luplo-io/luplo/issues"
 dependencies = [
     "typer>=0.15",
     "psycopg[binary]>=3.2",
