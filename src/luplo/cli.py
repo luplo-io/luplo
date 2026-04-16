@@ -85,7 +85,10 @@ def _cfg_server_url(flag: str | None = None) -> str:
     cfg = load_config()
     if cfg.server_url:
         return cfg.server_url
-    typer.echo("Error: no server URL. Use --server, LUPLO_SERVER_URL, or set [backend].server_url.", err=True)
+    typer.echo(
+        "Error: no server URL. Use --server, LUPLO_SERVER_URL, or set [backend].server_url.",
+        err=True,
+    )
     raise typer.Exit(1)
 
 
@@ -135,8 +138,31 @@ async def _backend() -> AsyncIterator[LocalBackend]:
 
 
 def _run(coro: object) -> object:
-    """Run an async coroutine from sync typer commands."""
-    return asyncio.run(coro)  # type: ignore[arg-type]
+    """Run an async coroutine from sync typer commands.
+
+    Translates ID-resolution errors raised from the core layer into
+    actionable messages and a non-zero exit code, so the user sees
+    something useful instead of a stack trace.
+    """
+    from luplo.core.errors import (
+        AmbiguousIdError,
+        IdTooShortError,
+        InvalidIdFormatError,
+    )
+
+    try:
+        return asyncio.run(coro)  # type: ignore[arg-type]
+    except AmbiguousIdError as exc:
+        typer.echo(f"Error: {exc.message}", err=True)
+        for mid, label in exc.matches:
+            typer.echo(f"  - {mid[:12]}  {label}", err=True)
+        raise typer.Exit(2)
+    except IdTooShortError as exc:
+        typer.echo(f"Error: {exc.message}", err=True)
+        raise typer.Exit(2)
+    except InvalidIdFormatError as exc:
+        typer.echo(f"Error: {exc.message}", err=True)
+        raise typer.Exit(2)
 
 
 # ── Init ─────────────────────────────────────────────────────────
@@ -145,32 +171,41 @@ def _run(coro: object) -> object:
 @app.command("init")
 def init(
     project: str = typer.Option(
-        ..., "--project", "-p",
+        ...,
+        "--project",
+        "-p",
         help="Project ID (e.g. 'hearthward'). Stored in .luplo and created in DB.",
     ),
     email: str = typer.Option(
-        ..., "--email", "-e",
+        ...,
+        "--email",
+        "-e",
         help="Your email (required — primary identifier after v0.5.1).",
     ),
     project_name: Optional[str] = typer.Option(
-        None, "--project-name",
+        None,
+        "--project-name",
         help="Human-readable project name. Defaults to project ID.",
     ),
     actor_name: Optional[str] = typer.Option(
-        None, "--name",
+        None,
+        "--name",
         help="Your display name. Defaults to the local-part of email.",
     ),
     actor_id: Optional[str] = typer.Option(
-        None, "--actor-id",
+        None,
+        "--actor-id",
         help="Explicit actor UUID. Auto-generated (uuid4) if omitted.",
     ),
     db_url: str = typer.Option(
-        "postgresql://localhost/luplo", "--db-url",
+        "postgresql://localhost/luplo",
+        "--db-url",
         help="PostgreSQL connection string.",
         envvar="LUPLO_DB_URL",
     ),
     server_url: str = typer.Option(
-        "", "--server-url",
+        "",
+        "--server-url",
         help="Optional remote server URL (for `lp login`).",
         envvar="LUPLO_SERVER_URL",
     ),
@@ -232,8 +267,7 @@ def init(
         try:
             async with pool.connection() as conn:
                 await conn.execute(
-                    "INSERT INTO projects (id, name) VALUES (%s, %s)"
-                    " ON CONFLICT (id) DO NOTHING",
+                    "INSERT INTO projects (id, name) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
                     (project, p_name),
                 )
                 await conn.execute(
@@ -264,7 +298,7 @@ def init(
 
     typer.echo("")
     typer.echo("Done! Try:")
-    typer.echo(f"  lp items add \"Your first decision\"")
+    typer.echo(f'  lp items add "Your first decision"')
     typer.echo(f"  lp items list")
     typer.echo(f"  lp brief")
 
@@ -288,15 +322,17 @@ def items_add(
 
     async def _do() -> None:
         async with _backend() as b:
-            item = await b.create_item(ItemCreate(
-                project_id=pid,
-                actor_id=aid,
-                item_type=item_type,
-                title=title,
-                body=body,
-                rationale=rationale,
-                system_ids=system or [],
-            ))
+            item = await b.create_item(
+                ItemCreate(
+                    project_id=pid,
+                    actor_id=aid,
+                    item_type=item_type,
+                    title=title,
+                    body=body,
+                    rationale=rationale,
+                    system_ids=system or [],
+                )
+            )
             typer.echo(f"Created {item.item_type} [{item.id[:8]}] {item.title}")
 
     _run(_do())
@@ -304,12 +340,17 @@ def items_add(
 
 @items_app.command("show")
 def items_show(
-    item_id: str = typer.Argument(..., help="Item ID (or prefix)."),
+    item_id: str = typer.Argument(
+        ...,
+        help="Full UUID or 8-char+ hex prefix. Ambiguous prefixes error out.",
+    ),
 ) -> None:
     """Show a single item."""
+
     async def _do() -> None:
+        pid = _cfg_project(None)
         async with _backend() as b:
-            item = await b.get_item(item_id)
+            item = await b.get_item(item_id, project_id=pid)
             if not item:
                 typer.echo(f"Item {item_id} not found.", err=True)
                 raise typer.Exit(1)
@@ -340,7 +381,10 @@ def items_list(
     async def _do() -> None:
         async with _backend() as b:
             results = await b.list_items(
-                pid, item_type=item_type, system_id=system, limit=limit,
+                pid,
+                item_type=item_type,
+                system_id=system,
+                limit=limit,
             )
             if not results:
                 typer.echo("No items found.")
@@ -436,8 +480,9 @@ def work_resume(
 def work_close(
     work_id: str = typer.Argument(..., help="Work unit ID."),
     status: str = typer.Option("done", "--status", help="done or abandoned."),
-    force: bool = typer.Option(False, "--force", "-f",
-                               help="Close even if an in_progress task remains."),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Close even if an in_progress task remains."
+    ),
     actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Close a work unit. Refuses if an in_progress task remains (use --force)."""
@@ -503,7 +548,9 @@ def systems_list(
                 typer.echo("No systems.")
                 return
             for s in results:
-                deps = f" -> {','.join(s.depends_on_system_ids)}" if s.depends_on_system_ids else ""
+                deps = (
+                    f" -> {','.join(s.depends_on_system_ids)}" if s.depends_on_system_ids else ""
+                )
                 typer.echo(f"  {s.id[:8]}  {s.name}{deps}")
 
     _run(_do())
@@ -549,7 +596,7 @@ def glossary_pending(
                 return
             for t in terms:
                 group = t.group_id[:8] if t.group_id else "orphan"
-                typer.echo(f"  {t.id[:8]}  \"{t.surface}\" -> group:{group}")
+                typer.echo(f'  {t.id[:8]}  "{t.surface}" -> group:{group}')
                 if t.context_snippet:
                     typer.echo(f"           ctx: {t.context_snippet[:80]}")
 
@@ -569,10 +616,13 @@ def glossary_approve(
     async def _do() -> None:
         async with _backend() as b:
             t = await b.approve_term(
-                term_id, group_id=group_id, actor_id=aid, as_canonical=canonical,
+                term_id,
+                group_id=group_id,
+                actor_id=aid,
+                as_canonical=canonical,
             )
             if t:
-                typer.echo(f"Approved \"{t.surface}\" as {t.status}")
+                typer.echo(f'Approved "{t.surface}" as {t.status}')
             else:
                 typer.echo("Term not found.", err=True)
 
@@ -592,7 +642,7 @@ def glossary_reject(
         async with _backend() as b:
             r = await b.reject_term(term_id, actor_id=aid, reason=reason)
             if r:
-                typer.echo(f"Rejected \"{r.rejected_term}\"")
+                typer.echo(f'Rejected "{r.rejected_term}"')
             else:
                 typer.echo("Term not found.", err=True)
 
@@ -672,7 +722,12 @@ def _print_task(item: object) -> None:
 @task_app.command("add")
 def task_add(
     title: str = typer.Argument(..., help="Task title."),
-    work_unit: str = typer.Option(..., "--wu", "-w", help="Work unit ID (or prefix)."),
+    work_unit: str = typer.Option(
+        ...,
+        "--wu",
+        "-w",
+        help="Work unit full UUID or 8-char+ hex prefix.",
+    ),
     body: Optional[str] = typer.Option(None, "--body", "-b"),
     system: Optional[list[str]] = typer.Option(None, "--system", "-s"),
     sort_order: Optional[int] = typer.Option(None, "--sort"),
@@ -686,8 +741,13 @@ def task_add(
     async def _do() -> None:
         async with _backend() as b:
             t = await b.create_task(
-                project_id=pid, work_unit_id=work_unit, title=title,
-                actor_id=aid, sort_order=sort_order, systems=system, body=body,
+                project_id=pid,
+                work_unit_id=work_unit,
+                title=title,
+                actor_id=aid,
+                sort_order=sort_order,
+                systems=system,
+                body=body,
             )
             _print_task(t)
 
@@ -700,6 +760,7 @@ def task_ls(
     status: Optional[str] = typer.Option(None, "--status", "-s"),
 ) -> None:
     """List tasks (chain heads) for a work unit, ordered by sort_order."""
+
     async def _do() -> None:
         async with _backend() as b:
             rows = await b.list_tasks(work_unit, status=status)
@@ -713,11 +774,18 @@ def task_ls(
 
 
 @task_app.command("show")
-def task_show(task_id: str = typer.Argument(...)) -> None:
+def task_show(
+    task_id: str = typer.Argument(
+        ...,
+        help="Full UUID or 8-char+ hex prefix. Ambiguous prefixes error out.",
+    ),
+) -> None:
     """Show a single task (resolved to chain head)."""
+
     async def _do() -> None:
+        pid = _cfg_project(None)
         async with _backend() as b:
-            t = await b.get_task(task_id)
+            t = await b.get_task(task_id, project_id=pid)
             if not t:
                 typer.echo(f"Task {task_id} not found.", err=True)
                 raise typer.Exit(1)
@@ -823,6 +891,7 @@ def task_reorder(
 @task_app.command("in-progress")
 def task_in_progress(work_unit: str = typer.Option(..., "--wu", "-w")) -> None:
     """Show the current in_progress task for a work unit, if any."""
+
     async def _do() -> None:
         async with _backend() as b:
             t = await b.get_in_progress_task(work_unit)
@@ -850,14 +919,16 @@ def _print_qa(item: object) -> None:
 @qa_app.command("add")
 def qa_add(
     title: str = typer.Argument(...),
-    coverage: str = typer.Option(..., "--coverage", "-c",
-                                 help="auto_partial | human_only"),
-    area: Optional[list[str]] = typer.Option(None, "--area",
-                                             help="vfx, sfx, ux, edge_case, perf, a11y, sec"),
-    tasks_target: Optional[list[str]] = typer.Option(None, "--task", "-t",
-                                                     help="Target task IDs."),
-    items_target: Optional[list[str]] = typer.Option(None, "--item", "-i",
-                                                     help="Target item IDs."),
+    coverage: str = typer.Option(..., "--coverage", "-c", help="auto_partial | human_only"),
+    area: Optional[list[str]] = typer.Option(
+        None, "--area", help="vfx, sfx, ux, edge_case, perf, a11y, sec"
+    ),
+    tasks_target: Optional[list[str]] = typer.Option(
+        None, "--task", "-t", help="Target task IDs."
+    ),
+    items_target: Optional[list[str]] = typer.Option(
+        None, "--item", "-i", help="Target item IDs."
+    ),
     work_unit: Optional[str] = typer.Option(None, "--wu", "-w"),
     body: Optional[str] = typer.Option(None, "--body"),
     project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
@@ -870,9 +941,15 @@ def qa_add(
     async def _do() -> None:
         async with _backend() as b:
             q = await b.create_qa(
-                project_id=pid, title=title, actor_id=aid, coverage=coverage,
-                areas=area, target_task_ids=tasks_target,
-                target_item_ids=items_target, work_unit_id=work_unit, body=body,
+                project_id=pid,
+                title=title,
+                actor_id=aid,
+                coverage=coverage,
+                areas=area,
+                target_task_ids=tasks_target,
+                target_item_ids=items_target,
+                work_unit_id=work_unit,
+                body=body,
             )
             _print_qa(q)
 
@@ -883,8 +960,9 @@ def qa_add(
 def qa_ls(
     status: Optional[str] = typer.Option(None, "--status", "-s"),
     work_unit: Optional[str] = typer.Option(None, "--wu", "-w"),
-    task: Optional[str] = typer.Option(None, "--task", "-t",
-                                       help="Filter to qa_checks targeting this task."),
+    task: Optional[str] = typer.Option(
+        None, "--task", "-t", help="Filter to qa_checks targeting this task."
+    ),
     item_id_filter: Optional[str] = typer.Option(None, "--item", "-i"),
     project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
@@ -909,11 +987,18 @@ def qa_ls(
 
 
 @qa_app.command("show")
-def qa_show(qa_id: str = typer.Argument(...)) -> None:
+def qa_show(
+    qa_id: str = typer.Argument(
+        ...,
+        help="Full UUID or 8-char+ hex prefix. Ambiguous prefixes error out.",
+    ),
+) -> None:
     """Show a single qa_check (chain head)."""
+
     async def _do() -> None:
+        pid = _cfg_project(None)
         async with _backend() as b:
-            q = await b.get_qa(qa_id)
+            q = await b.get_qa(qa_id, project_id=pid)
             if not q:
                 typer.echo(f"qa_check {qa_id} not found.", err=True)
                 raise typer.Exit(1)
@@ -990,8 +1075,7 @@ def qa_block(
 @qa_app.command("assign")
 def qa_assign(
     qa_id: str = typer.Argument(...),
-    assignee: str = typer.Option(..., "--to",
-                                 help="Assignee actor UUID."),
+    assignee: str = typer.Option(..., "--to", help="Assignee actor UUID."),
     actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
@@ -1011,12 +1095,15 @@ def qa_assign(
 def login(
     email: Optional[str] = typer.Option(None, "--email", "-e"),
     password: Optional[str] = typer.Option(
-        None, "--password", "-P",
+        None,
+        "--password",
+        "-P",
         help="If omitted, you'll be prompted.",
     ),
     server: Optional[str] = typer.Option(None, "--server", help="Server URL."),
     oauth: Optional[str] = typer.Option(
-        None, "--oauth",
+        None,
+        "--oauth",
         help="OAuth provider (github|google). Not yet wired — use password login.",
     ),
 ) -> None:
@@ -1120,7 +1207,10 @@ def token_refresh(server: Optional[str] = typer.Option(None, "--server")) -> Non
 def admin_set_password(
     email: str = typer.Argument(..., help="Target actor email."),
     password: Optional[str] = typer.Option(
-        None, "--password", "-P", help="If omitted, you'll be prompted.",
+        None,
+        "--password",
+        "-P",
+        help="If omitted, you'll be prompted.",
     ),
 ) -> None:
     """Set or reset a local actor's password (argon2id)."""
@@ -1157,7 +1247,9 @@ def admin_set_password(
 @server_app.command("init-secrets")
 def server_init_secrets(
     output: Path = typer.Option(
-        Path("luplo-server.toml"), "--output", "-o",
+        Path("luplo-server.toml"),
+        "--output",
+        "-o",
         help="Where to write the generated server config.",
     ),
     force: bool = typer.Option(False, "--force", "-f"),
@@ -1177,13 +1269,13 @@ def server_init_secrets(
 
     output.write_text(
         "# luplo server config. Secrets belong in env vars, not this file.\n"
-        '# Set: LUPLO_JWT_SECRET, LUPLO_SESSION_SECRET, LUPLO_ADMIN_PASSWORD_INITIAL\n'
-        '\n'
+        "# Set: LUPLO_JWT_SECRET, LUPLO_SESSION_SECRET, LUPLO_ADMIN_PASSWORD_INITIAL\n"
+        "\n"
         'db_url = "postgresql://localhost/luplo"\n'
         'base_url = "http://localhost:8000"\n'
-        'jwt_ttl_minutes = 60\n'
-        'allowed_email_domains = []\n'
-        'auto_create_users = true\n'
+        "jwt_ttl_minutes = 60\n"
+        "allowed_email_domains = []\n"
+        "auto_create_users = true\n"
     )
     typer.echo(f"Wrote {output}")
     typer.echo("")

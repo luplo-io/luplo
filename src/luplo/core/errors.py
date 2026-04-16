@@ -77,9 +77,7 @@ class TaskAlreadyInProgressError(ConflictError):
 
 class TaskStateTransitionError(ConflictError):
     def __init__(self, task_id: str, from_status: str, to_status: str) -> None:
-        super().__init__(
-            f"Task {task_id!r}: cannot transition {from_status!r} → {to_status!r}"
-        )
+        super().__init__(f"Task {task_id!r}: cannot transition {from_status!r} → {to_status!r}")
         self.task_id = task_id
         self.from_status = from_status
         self.to_status = to_status
@@ -96,9 +94,7 @@ class QACheckNotFoundError(NotFoundError):
 
 class QAStateTransitionError(ConflictError):
     def __init__(self, qa_id: str, from_status: str, to_status: str) -> None:
-        super().__init__(
-            f"QA check {qa_id!r}: cannot transition {from_status!r} → {to_status!r}"
-        )
+        super().__init__(f"QA check {qa_id!r}: cannot transition {from_status!r} → {to_status!r}")
         self.qa_id = qa_id
         self.from_status = from_status
         self.to_status = to_status
@@ -115,3 +111,44 @@ class WorkUnitHasActiveTasksError(ConflictError):
         )
         self.work_unit_id = work_unit_id
         self.in_progress_task_id = in_progress_task_id
+
+
+# ── ID resolution ────────────────────────────────────────────────
+
+
+class IdTooShortError(ValidationError):
+    """Raised when a UUID prefix is shorter than the minimum length."""
+
+    def __init__(self, prefix: str, min_length: int) -> None:
+        super().__init__(
+            f"ID prefix {prefix!r} is too short; supply at least {min_length} hex characters."
+        )
+        self.prefix = prefix
+        self.min_length = min_length
+
+
+class InvalidIdFormatError(ValidationError):
+    """Raised when an ID is neither a full UUID nor a valid hex prefix."""
+
+    def __init__(self, value: str) -> None:
+        super().__init__(
+            f"Invalid ID {value!r}: expected a full UUID or a hex prefix "
+            "(0-9, a-f; dashes ignored)."
+        )
+        self.value = value
+
+
+class AmbiguousIdError(ConflictError):
+    """Raised when a UUID prefix matches more than one row.
+
+    Carries up to two sample matches so callers can show the user enough
+    to disambiguate without leaking the entire result set.
+    """
+
+    def __init__(self, prefix: str, matches: list[tuple[str, str]]) -> None:
+        sample = ", ".join(f"{mid[:12]} ({label})" for mid, label in matches)
+        super().__init__(
+            f"ID prefix {prefix!r} is ambiguous; matched: {sample}. Supply more characters."
+        )
+        self.prefix = prefix
+        self.matches = matches

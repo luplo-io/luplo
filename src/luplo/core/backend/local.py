@@ -79,9 +79,7 @@ class LocalBackend:
         self, *, id: str, name: str, description: str | None = None
     ) -> Project:
         async with self._pool.connection() as conn:
-            return await projects.create_project(
-                conn, id=id, name=name, description=description
-            )
+            return await projects.create_project(conn, id=id, name=name, description=description)
 
     async def get_project(self, id: str) -> Project | None:
         async with self._pool.connection() as conn:
@@ -107,8 +105,12 @@ class LocalBackend:
         actual_email = email if email is not None else f"{id}@placeholder.local"
         async with self._pool.connection() as conn:
             return await actors.create_actor(
-                conn, id=id, name=name, email=actual_email,
-                role=role, external_ids=external_ids,
+                conn,
+                id=id,
+                name=name,
+                email=actual_email,
+                role=role,
+                external_ids=external_ids,
             )
 
     async def get_actor(self, id: str) -> Actor | None:
@@ -160,32 +162,35 @@ class LocalBackend:
     ) -> WorkUnit:
         async with self._pool.connection() as conn:
             wu = await work_units.open_work_unit(
-                conn, id=id, project_id=project_id, title=title,
-                description=description, system_ids=system_ids,
+                conn,
+                id=id,
+                project_id=project_id,
+                title=title,
+                description=description,
+                system_ids=system_ids,
                 created_by=created_by,
             )
             if created_by:
                 await audit.record_audit(
-                    conn, actor_id=created_by, action="work_unit.create",
-                    target_type="work_unit", target_id=wu.id,
+                    conn,
+                    actor_id=created_by,
+                    action="work_unit.create",
+                    target_type="work_unit",
+                    target_id=wu.id,
                 )
             return wu
 
-    async def get_work_unit(self, id: str) -> WorkUnit | None:
+    async def get_work_unit(self, id: str, *, project_id: str | None = None) -> WorkUnit | None:
         async with self._pool.connection() as conn:
-            return await work_units.get_work_unit(conn, id)
+            return await work_units.get_work_unit(conn, id, project_id=project_id)
 
     async def list_work_units(
         self, project_id: str, *, status: str | None = None
     ) -> list[WorkUnit]:
         async with self._pool.connection() as conn:
-            return await work_units.list_work_units(
-                conn, project_id, status=status
-            )
+            return await work_units.list_work_units(conn, project_id, status=status)
 
-    async def close_work_unit(
-        self, id: str, *, actor_id: str, force: bool = False
-    ) -> WorkUnit:
+    async def close_work_unit(self, id: str, *, actor_id: str, force: bool = False) -> WorkUnit:
         async with self._pool.connection() as conn:
             # Gate: refuse close when an in_progress task is alive (P7's
             # "domain validation only" applied here too — no DB trigger).
@@ -195,13 +200,14 @@ class LocalBackend:
                     from luplo.core.errors import WorkUnitHasActiveTasksError
 
                     raise WorkUnitHasActiveTasksError(id, in_progress.id)
-            result = await work_units.close_work_unit(
-                conn, id, actor_id=actor_id
-            )
+            result = await work_units.close_work_unit(conn, id, actor_id=actor_id)
             if result:
                 await audit.record_audit(
-                    conn, actor_id=actor_id, action="work_unit.close",
-                    target_type="work_unit", target_id=id,
+                    conn,
+                    actor_id=actor_id,
+                    action="work_unit.close",
+                    target_type="work_unit",
+                    target_id=id,
                     metadata={"status": result.status, "force": force},
                 )
             return result  # type: ignore[return-value]
@@ -219,22 +225,23 @@ class LocalBackend:
     ) -> System:
         async with self._pool.connection() as conn:
             return await systems.create_system(
-                conn, id=id, project_id=project_id, name=name,
+                conn,
+                id=id,
+                project_id=project_id,
+                name=name,
                 description=description,
                 depends_on_system_ids=depends_on_system_ids,
             )
 
-    async def get_system(self, id: str) -> System | None:
+    async def get_system(self, id: str, *, project_id: str | None = None) -> System | None:
         async with self._pool.connection() as conn:
-            return await systems.get_system(conn, id)
+            return await systems.get_system(conn, id, project_id=project_id)
 
     async def list_systems(self, project_id: str) -> list[System]:
         async with self._pool.connection() as conn:
             return await systems.list_systems(conn, project_id)
 
-    async def update_system(
-        self, id: str, **kwargs: Any
-    ) -> System:
+    async def update_system(self, id: str, **kwargs: Any) -> System:
         async with self._pool.connection() as conn:
             result = await systems.update_system(conn, id, **kwargs)
             return result  # type: ignore[return-value]
@@ -253,18 +260,12 @@ class LocalBackend:
                 action=audit_action,
                 target_type="item",
                 target_id=item.id,
-                metadata=(
-                    {"supersedes_id": data.supersedes_id}
-                    if data.supersedes_id
-                    else None
-                ),
+                metadata=({"supersedes_id": data.supersedes_id} if data.supersedes_id else None),
             )
 
             # History for supersede edits
             if data.supersedes_id:
-                old = await items.get_item_including_deleted(
-                    conn, data.supersedes_id
-                )
+                old = await items.get_item_including_deleted(conn, data.supersedes_id)
                 await history.record_history(
                     conn,
                     item_id=item.id,
@@ -345,9 +346,9 @@ class LocalBackend:
                 },
             )
 
-    async def get_item(self, id: str) -> Item | None:
+    async def get_item(self, id: str, *, project_id: str | None = None) -> Item | None:
         async with self._pool.connection() as conn:
-            return await items.get_item(conn, id)
+            return await items.get_item(conn, id, project_id=project_id)
 
     async def list_items(
         self,
@@ -362,9 +363,14 @@ class LocalBackend:
     ) -> list[Item]:
         async with self._pool.connection() as conn:
             return await items.list_items(
-                conn, project_id, item_type=item_type, system_id=system_id,
-                work_unit_id=work_unit_id, include_deleted=include_deleted,
-                limit=limit, offset=offset,
+                conn,
+                project_id,
+                item_type=item_type,
+                system_id=system_id,
+                work_unit_id=work_unit_id,
+                include_deleted=include_deleted,
+                limit=limit,
+                offset=offset,
             )
 
     async def delete_item(self, id: str, *, actor_id: str) -> None:
@@ -372,8 +378,11 @@ class LocalBackend:
             deleted = await items.delete_item(conn, id, actor_id=actor_id)
             if deleted:
                 await audit.record_audit(
-                    conn, actor_id=actor_id, action="item.delete",
-                    target_type="item", target_id=id,
+                    conn,
+                    actor_id=actor_id,
+                    action="item.delete",
+                    target_type="item",
+                    target_id=id,
                 )
 
     async def get_supersedes_chain(self, id: str) -> list[Item]:
@@ -394,30 +403,35 @@ class LocalBackend:
     ) -> Link:
         async with self._pool.connection() as conn:
             link = await links.create_link(
-                conn, from_item_id=from_item_id, to_item_id=to_item_id,
-                link_type=link_type, strength=strength, note=note,
+                conn,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                link_type=link_type,
+                strength=strength,
+                note=note,
                 actor_id=actor_id,
             )
             if actor_id:
                 await audit.record_audit(
-                    conn, actor_id=actor_id, action="create",
+                    conn,
+                    actor_id=actor_id,
+                    action="create",
                     target_type="link",
                     target_id=f"{from_item_id}->{to_item_id}:{link_type}",
                 )
             return link
 
     async def get_links(
-        self, item_id: str, *, direction: str = "from",
+        self,
+        item_id: str,
+        *,
+        direction: str = "from",
         link_type: str | None = None,
     ) -> list[Link]:
         async with self._pool.connection() as conn:
-            return await links.get_links(
-                conn, item_id, direction=direction, link_type=link_type
-            )
+            return await links.get_links(conn, item_id, direction=direction, link_type=link_type)
 
-    async def delete_link(
-        self, from_item_id: str, to_item_id: str, link_type: str
-    ) -> None:
+    async def delete_link(self, from_item_id: str, to_item_id: str, link_type: str) -> None:
         async with self._pool.connection() as conn:
             await links.delete_link(conn, from_item_id, to_item_id, link_type)
 
@@ -434,93 +448,142 @@ class LocalBackend:
     ) -> list[SearchResult]:
         async with self._pool.connection() as conn:
             return await search_fn(
-                conn, query, project_id,
+                conn,
+                query,
+                project_id,
                 embedding_backend=self._embedding,
-                item_types=item_types, system_ids=system_ids,
+                item_types=item_types,
+                system_ids=system_ids,
                 limit=limit,
             )
 
     # ── Glossary ─────────────────────────────────────────────────
 
     async def create_glossary_group(
-        self, *, id: str, project_id: str, canonical: str,
-        definition: str | None = None, scope: str = "project",
-        scope_id: str | None = None, created_by: str | None = None,
+        self,
+        *,
+        id: str,
+        project_id: str,
+        canonical: str,
+        definition: str | None = None,
+        scope: str = "project",
+        scope_id: str | None = None,
+        created_by: str | None = None,
     ) -> GlossaryGroup:
         async with self._pool.connection() as conn:
             return await glossary.create_glossary_group(
-                conn, id=id, project_id=project_id, canonical=canonical,
-                definition=definition, scope=scope, scope_id=scope_id,
+                conn,
+                id=id,
+                project_id=project_id,
+                canonical=canonical,
+                definition=definition,
+                scope=scope,
+                scope_id=scope_id,
                 created_by=created_by,
             )
 
-    async def get_glossary_group(self, id: str) -> GlossaryGroup | None:
+    async def get_glossary_group(
+        self, id: str, *, project_id: str | None = None
+    ) -> GlossaryGroup | None:
         async with self._pool.connection() as conn:
-            return await glossary.get_glossary_group(conn, id)
+            return await glossary.get_glossary_group(conn, id, project_id=project_id)
 
     async def list_glossary_groups(
-        self, project_id: str, *, needs_review: bool = False,
-        limit: int = 100, offset: int = 0,
+        self,
+        project_id: str,
+        *,
+        needs_review: bool = False,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[GlossaryGroup]:
         async with self._pool.connection() as conn:
             return await glossary.list_glossary_groups(
-                conn, project_id, needs_review=needs_review,
-                limit=limit, offset=offset,
+                conn,
+                project_id,
+                needs_review=needs_review,
+                limit=limit,
+                offset=offset,
             )
 
     async def create_glossary_term(
-        self, *, id: str, group_id: str | None, surface: str,
-        normalized: str, is_protected: bool = False,
-        status: str = "pending", source_item_id: str | None = None,
+        self,
+        *,
+        id: str,
+        group_id: str | None,
+        surface: str,
+        normalized: str,
+        is_protected: bool = False,
+        status: str = "pending",
+        source_item_id: str | None = None,
         context_snippet: str | None = None,
     ) -> GlossaryTerm:
         async with self._pool.connection() as conn:
             return await glossary.create_glossary_term(
-                conn, id=id, group_id=group_id, surface=surface,
-                normalized=normalized, is_protected=is_protected,
-                status=status, source_item_id=source_item_id,
+                conn,
+                id=id,
+                group_id=group_id,
+                surface=surface,
+                normalized=normalized,
+                is_protected=is_protected,
+                status=status,
+                source_item_id=source_item_id,
                 context_snippet=context_snippet,
             )
 
-    async def list_pending_terms(
-        self, project_id: str, *, limit: int = 50
-    ) -> list[GlossaryTerm]:
+    async def list_pending_terms(self, project_id: str, *, limit: int = 50) -> list[GlossaryTerm]:
         async with self._pool.connection() as conn:
-            return await glossary.list_pending_terms(
-                conn, project_id, limit=limit
-            )
+            return await glossary.list_pending_terms(conn, project_id, limit=limit)
 
     async def approve_term(
-        self, term_id: str, *, group_id: str, actor_id: str,
+        self,
+        term_id: str,
+        *,
+        group_id: str,
+        actor_id: str,
         as_canonical: bool = False,
     ) -> GlossaryTerm:
         async with self._pool.connection() as conn:
             result = await glossary.approve_term(
-                conn, term_id, group_id=group_id,
-                actor_id=actor_id, as_canonical=as_canonical,
+                conn,
+                term_id,
+                group_id=group_id,
+                actor_id=actor_id,
+                as_canonical=as_canonical,
             )
             if result:
                 await audit.record_audit(
-                    conn, actor_id=actor_id, action="approve",
-                    target_type="glossary_term", target_id=term_id,
+                    conn,
+                    actor_id=actor_id,
+                    action="approve",
+                    target_type="glossary_term",
+                    target_id=term_id,
                 )
             return result  # type: ignore[return-value]
 
     async def reject_term(
-        self, term_id: str, *, actor_id: str, reason: str | None = None,
+        self,
+        term_id: str,
+        *,
+        actor_id: str,
+        reason: str | None = None,
     ) -> GlossaryRejection:
         async with self._pool.connection() as conn:
-            result = await glossary.reject_term(
-                conn, term_id, actor_id=actor_id, reason=reason
-            )
+            result = await glossary.reject_term(conn, term_id, actor_id=actor_id, reason=reason)
             await audit.record_audit(
-                conn, actor_id=actor_id, action="reject",
-                target_type="glossary_term", target_id=term_id,
+                conn,
+                actor_id=actor_id,
+                action="reject",
+                target_type="glossary_term",
+                target_id=term_id,
             )
             return result  # type: ignore[return-value]
 
     async def merge_groups(
-        self, source_group_id: str, target_group_id: str, *, actor_id: str,
+        self,
+        source_group_id: str,
+        target_group_id: str,
+        *,
+        actor_id: str,
     ) -> GlossaryGroup:
         async with self._pool.connection() as conn:
             result = await glossary.merge_groups(
@@ -529,7 +592,11 @@ class LocalBackend:
             return result  # type: ignore[return-value]
 
     async def split_term(
-        self, term_id: str, *, new_canonical: str, actor_id: str,
+        self,
+        term_id: str,
+        *,
+        new_canonical: str,
+        actor_id: str,
     ) -> GlossaryGroup:
         async with self._pool.connection() as conn:
             result = await glossary.split_term(
@@ -544,8 +611,13 @@ class LocalBackend:
     # ── History ──────────────────────────────────────────────────
 
     async def record_history(
-        self, *, item_id: str, version: int, changed_by: str,
-        content_before: str | None = None, content_after: str | None = None,
+        self,
+        *,
+        item_id: str,
+        version: int,
+        changed_by: str,
+        content_before: str | None = None,
+        content_after: str | None = None,
         content_hash_before: str | None = None,
         content_hash_after: str | None = None,
         diff_summary: str | None = None,
@@ -554,36 +626,56 @@ class LocalBackend:
     ) -> HistoryEntry:
         async with self._pool.connection() as conn:
             return await history.record_history(
-                conn, item_id=item_id, version=version, changed_by=changed_by,
-                content_before=content_before, content_after=content_after,
+                conn,
+                item_id=item_id,
+                version=version,
+                changed_by=changed_by,
+                content_before=content_before,
+                content_after=content_after,
                 content_hash_before=content_hash_before,
                 content_hash_after=content_hash_after,
-                diff_summary=diff_summary, semantic_impact=semantic_impact,
+                diff_summary=diff_summary,
+                semantic_impact=semantic_impact,
                 source_event_id=source_event_id,
             )
 
     async def query_history(
-        self, *, project_id: str | None = None,
-        item_id: str | None = None, since: datetime | None = None,
-        semantic_impacts: list[str] | None = None, limit: int = 50,
+        self,
+        *,
+        project_id: str | None = None,
+        item_id: str | None = None,
+        since: datetime | None = None,
+        semantic_impacts: list[str] | None = None,
+        limit: int = 50,
     ) -> list[HistoryEntry]:
         async with self._pool.connection() as conn:
             return await history.query_history(
-                conn, project_id=project_id, item_id=item_id,
-                since=since, semantic_impacts=semantic_impacts, limit=limit,
+                conn,
+                project_id=project_id,
+                item_id=item_id,
+                since=since,
+                semantic_impacts=semantic_impacts,
+                limit=limit,
             )
 
     # ── Audit ────────────────────────────────────────────────────
 
     async def record_audit(
-        self, *, actor_id: str, action: str,
-        target_type: str | None = None, target_id: str | None = None,
+        self,
+        *,
+        actor_id: str,
+        action: str,
+        target_type: str | None = None,
+        target_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         async with self._pool.connection() as conn:
             await audit.record_audit(
-                conn, actor_id=actor_id, action=action,
-                target_type=target_type, target_id=target_id,
+                conn,
+                actor_id=actor_id,
+                action=action,
+                target_type=target_type,
+                target_id=target_id,
                 metadata=metadata,
             )
 
@@ -603,18 +695,22 @@ class LocalBackend:
     ) -> Item:
         async with self._pool.connection() as conn:
             return await tasks.create_task(
-                conn, project_id=project_id, work_unit_id=work_unit_id,
-                title=title, actor_id=actor_id, sort_order=sort_order,
-                systems=systems, body=body, context_extra=context_extra,
+                conn,
+                project_id=project_id,
+                work_unit_id=work_unit_id,
+                title=title,
+                actor_id=actor_id,
+                sort_order=sort_order,
+                systems=systems,
+                body=body,
+                context_extra=context_extra,
             )
 
-    async def get_task(self, task_id: str) -> Item | None:
+    async def get_task(self, task_id: str, *, project_id: str | None = None) -> Item | None:
         async with self._pool.connection() as conn:
-            return await tasks.get_task(conn, task_id)
+            return await tasks.get_task(conn, task_id, project_id=project_id)
 
-    async def list_tasks(
-        self, work_unit_id: str, *, status: str | None = None
-    ) -> list[Item]:
+    async def list_tasks(self, work_unit_id: str, *, status: str | None = None) -> list[Item]:
         async with self._pool.connection() as conn:
             return await tasks.list_tasks(conn, work_unit_id, status=status)
 
@@ -626,10 +722,12 @@ class LocalBackend:
         async with self._pool.connection() as conn:
             new = await tasks.start_task(conn, task_id, actor_id=actor_id)
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
-                metadata={"status_transition": "→in_progress",
-                          "domain": "task"},
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
+                metadata={"status_transition": "→in_progress", "domain": "task"},
             )
             return new
 
@@ -638,25 +736,35 @@ class LocalBackend:
     ) -> Item:
         async with self._pool.connection() as conn:
             new = await tasks.complete_task(
-                conn, task_id, actor_id=actor_id, summary=summary,
+                conn,
+                task_id,
+                actor_id=actor_id,
+                summary=summary,
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
                 metadata={"status_transition": "→done", "domain": "task"},
             )
             return new
 
-    async def block_task(
-        self, task_id: str, *, actor_id: str, reason: str
-    ) -> Item:
+    async def block_task(self, task_id: str, *, actor_id: str, reason: str) -> Item:
         async with self._pool.connection() as conn:
             new = await tasks.block_task(
-                conn, task_id, actor_id=actor_id, reason=reason,
+                conn,
+                task_id,
+                actor_id=actor_id,
+                reason=reason,
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
                 metadata={"status_transition": "→blocked", "domain": "task"},
             )
             # Cross-cutting: auto-create a decision item per 30fe8230 rules.
@@ -680,23 +788,29 @@ class LocalBackend:
                 ),
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.create",
-                target_type="item", target_id=decision.id,
-                metadata={"trigger": "task_block",
-                          "source_task_id": new.id},
+                conn,
+                actor_id=actor_id,
+                action="item.create",
+                target_type="item",
+                target_id=decision.id,
+                metadata={"trigger": "task_block", "source_task_id": new.id},
             )
             return new
 
-    async def skip_task(
-        self, task_id: str, *, actor_id: str, reason: str | None = None
-    ) -> Item:
+    async def skip_task(self, task_id: str, *, actor_id: str, reason: str | None = None) -> Item:
         async with self._pool.connection() as conn:
             new = await tasks.skip_task(
-                conn, task_id, actor_id=actor_id, reason=reason,
+                conn,
+                task_id,
+                actor_id=actor_id,
+                reason=reason,
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
                 metadata={"status_transition": "→skipped", "domain": "task"},
             )
             return new
@@ -710,11 +824,17 @@ class LocalBackend:
     ) -> list[Item]:
         async with self._pool.connection() as conn:
             refreshed = await tasks.reorder_tasks(
-                conn, work_unit_id, task_ids, actor_id=actor_id,
+                conn,
+                work_unit_id,
+                task_ids,
+                actor_id=actor_id,
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="work_unit", target_id=work_unit_id,
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="work_unit",
+                target_id=work_unit_id,
                 metadata={
                     "trigger": "reorder",
                     "transition": "sort_order_batch",
@@ -742,17 +862,22 @@ class LocalBackend:
     ) -> Item:
         async with self._pool.connection() as conn:
             return await qa.create_qa(
-                conn, project_id=project_id, title=title, actor_id=actor_id,
-                coverage=coverage, areas=areas,
+                conn,
+                project_id=project_id,
+                title=title,
+                actor_id=actor_id,
+                coverage=coverage,
+                areas=areas,
                 target_item_ids=target_item_ids,
                 target_task_ids=target_task_ids,
-                work_unit_id=work_unit_id, body=body,
+                work_unit_id=work_unit_id,
+                body=body,
                 context_extra=context_extra,
             )
 
-    async def get_qa(self, qa_id: str) -> Item | None:
+    async def get_qa(self, qa_id: str, *, project_id: str | None = None) -> Item | None:
         async with self._pool.connection() as conn:
-            return await qa.get_qa(conn, qa_id)
+            return await qa.get_qa(conn, qa_id, project_id=project_id)
 
     async def list_qa(
         self,
@@ -763,7 +888,10 @@ class LocalBackend:
     ) -> list[Item]:
         async with self._pool.connection() as conn:
             return await qa.list_qa(
-                conn, project_id, status=status, work_unit_id=work_unit_id,
+                conn,
+                project_id,
+                status=status,
+                work_unit_id=work_unit_id,
             )
 
     async def list_pending_qa_for_task(self, task_id: str) -> list[Item]:
@@ -782,55 +910,66 @@ class LocalBackend:
         async with self._pool.connection() as conn:
             new = await qa.start_qa(conn, qa_id, actor_id=actor_id)
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
-                metadata={"status_transition": "→in_progress",
-                          "domain": "qa_check"},
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
+                metadata={"status_transition": "→in_progress", "domain": "qa_check"},
             )
             return new
 
-    async def pass_qa(
-        self, qa_id: str, *, actor_id: str, evidence: str | None = None
-    ) -> Item:
+    async def pass_qa(self, qa_id: str, *, actor_id: str, evidence: str | None = None) -> Item:
         async with self._pool.connection() as conn:
             new = await qa.pass_qa(
-                conn, qa_id, actor_id=actor_id, evidence=evidence,
+                conn,
+                qa_id,
+                actor_id=actor_id,
+                evidence=evidence,
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
-                metadata={"status_transition": "→passed",
-                          "domain": "qa_check"},
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
+                metadata={"status_transition": "→passed", "domain": "qa_check"},
             )
             return new
 
-    async def fail_qa(
-        self, qa_id: str, *, actor_id: str, reason: str
-    ) -> Item:
+    async def fail_qa(self, qa_id: str, *, actor_id: str, reason: str) -> Item:
         async with self._pool.connection() as conn:
             new = await qa.fail_qa(
-                conn, qa_id, actor_id=actor_id, reason=reason,
+                conn,
+                qa_id,
+                actor_id=actor_id,
+                reason=reason,
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
-                metadata={"status_transition": "→failed",
-                          "domain": "qa_check"},
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
+                metadata={"status_transition": "→failed", "domain": "qa_check"},
             )
             return new
 
-    async def block_qa(
-        self, qa_id: str, *, actor_id: str, reason: str
-    ) -> Item:
+    async def block_qa(self, qa_id: str, *, actor_id: str, reason: str) -> Item:
         async with self._pool.connection() as conn:
             new = await qa.block_qa(
-                conn, qa_id, actor_id=actor_id, reason=reason,
+                conn,
+                qa_id,
+                actor_id=actor_id,
+                reason=reason,
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
-                metadata={"status_transition": "→blocked",
-                          "domain": "qa_check"},
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
+                metadata={"status_transition": "→blocked", "domain": "qa_check"},
             )
             return new
 
@@ -838,41 +977,55 @@ class LocalBackend:
         async with self._pool.connection() as conn:
             new = await qa.skip_qa(conn, qa_id, actor_id=actor_id)
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
-                metadata={"status_transition": "→skipped",
-                          "domain": "qa_check"},
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
+                metadata={"status_transition": "→skipped", "domain": "qa_check"},
             )
             return new
 
-    async def assign_qa(
-        self, qa_id: str, *, actor_id: str, assignee_actor_id: str
-    ) -> Item:
+    async def assign_qa(self, qa_id: str, *, actor_id: str, assignee_actor_id: str) -> Item:
         async with self._pool.connection() as conn:
             new = await qa.assign_qa(
-                conn, qa_id, actor_id=actor_id,
+                conn,
+                qa_id,
+                actor_id=actor_id,
                 assignee_actor_id=assignee_actor_id,
             )
             await audit.record_audit(
-                conn, actor_id=actor_id, action="item.update",
-                target_type="item", target_id=new.id,
-                metadata={"trigger": "qa_assign",
-                          "assignee": assignee_actor_id,
-                          "domain": "qa_check"},
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
+                metadata={
+                    "trigger": "qa_assign",
+                    "assignee": assignee_actor_id,
+                    "domain": "qa_check",
+                },
             )
             return new
 
     # ── Sync ─────────────────────────────────────────────────────
 
     async def enqueue_sync(
-        self, *, source_type: str, source_page_id: str,
-        payload: str | None = None, source_event_id: str | None = None,
+        self,
+        *,
+        source_type: str,
+        source_page_id: str,
+        payload: str | None = None,
+        source_event_id: str | None = None,
         debounce_seconds: int = 300,
     ) -> SyncJob:
         async with self._pool.connection() as conn:
             return await _enqueue_sync(
-                conn, source_type=source_type, source_page_id=source_page_id,
-                payload=payload, source_event_id=source_event_id,
+                conn,
+                source_type=source_type,
+                source_page_id=source_page_id,
+                payload=payload,
+                source_event_id=source_event_id,
                 debounce_seconds=debounce_seconds,
             )
 

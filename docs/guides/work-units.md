@@ -53,8 +53,12 @@ uv run lp items add "Use JWT over session cookies" \
 uv run lp task add "Add JWT validation middleware" --wu a85a4555
 ```
 
-The `--wu` argument accepts an ID prefix, so you rarely need the full
-UUID.
+`--wu` (and every other id argument in the CLI) accepts a hex prefix of
+**at least 8 characters** — `a85a4555` instead of the full UUID. If
+that prefix matches more than one row the CLI prints the conflicting
+ids and exits non-zero, so you never act on the wrong row by accident.
+MCP and HTTP callers still require the full UUID — see
+{doc}`../concepts/architecture` for why the asymmetry is deliberate.
 
 ## Find in-progress work
 

@@ -102,9 +102,7 @@ async def test_create_item_minimal_fields(
 
 
 @pytest.mark.asyncio
-async def test_get_item_found(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_get_item_found(conn: object, seed_project: str, seed_actor: str) -> None:
     created = await create_item(
         conn,  # type: ignore[arg-type]
         _decision(seed_project, seed_actor, title="Findable"),
@@ -118,7 +116,11 @@ async def test_get_item_found(
 
 @pytest.mark.asyncio
 async def test_get_item_not_found(conn: object) -> None:
-    result = await get_item(conn, "nonexistent-id")  # type: ignore[arg-type]
+    # Use a syntactically valid full UUID that hasn't been seeded.
+    result = await get_item(
+        conn,  # type: ignore[arg-type]
+        "00000000-dead-4dea-8dea-000000000000",
+    )
     assert result is None
 
 
@@ -154,9 +156,7 @@ async def test_get_item_including_deleted(
 
 
 @pytest.mark.asyncio
-async def test_list_items_basic(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_list_items_basic(conn: object, seed_project: str, seed_actor: str) -> None:
     await create_item(
         conn,  # type: ignore[arg-type]
         _decision(seed_project, seed_actor, title="Item A"),
@@ -196,15 +196,15 @@ async def test_list_items_include_deleted(
     await delete_item(conn, item.id, actor_id=seed_actor)  # type: ignore[arg-type]
 
     items = await list_items(
-        conn, seed_project, include_deleted=True  # type: ignore[arg-type]
+        conn,
+        seed_project,
+        include_deleted=True,  # type: ignore[arg-type]
     )
     assert any(i.id == item.id for i in items)
 
 
 @pytest.mark.asyncio
-async def test_list_items_filter_by_type(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_list_items_filter_by_type(conn: object, seed_project: str, seed_actor: str) -> None:
     await create_item(
         conn,  # type: ignore[arg-type]
         _decision(seed_project, seed_actor, title="A decision"),
@@ -220,7 +220,9 @@ async def test_list_items_filter_by_type(
     )
 
     decisions = await list_items(
-        conn, seed_project, item_type="decision"  # type: ignore[arg-type]
+        conn,
+        seed_project,
+        item_type="decision",  # type: ignore[arg-type]
     )
     assert len(decisions) == 1
     assert decisions[0].item_type == "decision"
@@ -236,13 +238,13 @@ async def test_list_items_filter_by_system(
     )
     await create_item(
         conn,  # type: ignore[arg-type]
-        _decision(
-            seed_project, seed_actor, title="Vendor rule", system_ids=["vendor"]
-        ),
+        _decision(seed_project, seed_actor, title="Vendor rule", system_ids=["vendor"]),
     )
 
     karma_items = await list_items(
-        conn, seed_project, system_id="karma"  # type: ignore[arg-type]
+        conn,
+        seed_project,
+        system_id="karma",  # type: ignore[arg-type]
     )
     assert len(karma_items) == 1
     assert karma_items[0].title == "Karma rule"
@@ -254,8 +256,7 @@ async def test_list_items_filter_by_work_unit(
 ) -> None:
     # Create a work unit first
     await conn.execute(  # type: ignore[union-attr]
-        "INSERT INTO work_units (id, project_id, title, created_by)"
-        " VALUES (%s, %s, %s, %s)",
+        "INSERT INTO work_units (id, project_id, title, created_by) VALUES (%s, %s, %s, %s)",
         ("wu-1", seed_project, "Design sprint", seed_actor),
     )
 
@@ -269,16 +270,16 @@ async def test_list_items_filter_by_work_unit(
     )
 
     items = await list_items(
-        conn, seed_project, work_unit_id="wu-1"  # type: ignore[arg-type]
+        conn,
+        seed_project,
+        work_unit_id="wu-1",  # type: ignore[arg-type]
     )
     assert len(items) == 1
     assert items[0].title == "In WU"
 
 
 @pytest.mark.asyncio
-async def test_list_items_pagination(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_list_items_pagination(conn: object, seed_project: str, seed_actor: str) -> None:
     for i in range(5):
         await create_item(
             conn,  # type: ignore[arg-type]
@@ -297,9 +298,7 @@ async def test_list_items_pagination(
 
 
 @pytest.mark.asyncio
-async def test_delete_item_returns_true(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_delete_item_returns_true(conn: object, seed_project: str, seed_actor: str) -> None:
     item = await create_item(
         conn,  # type: ignore[arg-type]
         _decision(seed_project, seed_actor, title="Delete me"),
@@ -309,9 +308,7 @@ async def test_delete_item_returns_true(
 
 
 @pytest.mark.asyncio
-async def test_delete_item_idempotent(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_delete_item_idempotent(conn: object, seed_project: str, seed_actor: str) -> None:
     item = await create_item(
         conn,  # type: ignore[arg-type]
         _decision(seed_project, seed_actor, title="Delete twice"),
@@ -324,7 +321,8 @@ async def test_delete_item_idempotent(
 @pytest.mark.asyncio
 async def test_delete_nonexistent_returns_false(conn: object) -> None:
     result = await delete_item(
-        conn, "ghost",
+        conn,
+        "ghost",
         actor_id="00000000-0000-0000-0000-00000000dead",  # type: ignore[arg-type]
     )
     assert result is False

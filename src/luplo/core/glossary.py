@@ -18,21 +18,37 @@ from typing import Any
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
+from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import GlossaryGroup, GlossaryRejection, GlossaryTerm
 
 # ── Column definitions ───────────────────────────────────────────
 
 _GROUP_COLUMNS = (
-    "id", "project_id", "scope", "scope_id", "canonical",
-    "definition", "created_at", "created_by",
-    "last_reviewed_at", "last_reviewed_by",
+    "id",
+    "project_id",
+    "scope",
+    "scope_id",
+    "canonical",
+    "definition",
+    "created_at",
+    "created_by",
+    "last_reviewed_at",
+    "last_reviewed_by",
 )
 _GROUP_RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in _GROUP_COLUMNS)
 
 _TERM_COLUMNS = (
-    "id", "group_id", "surface", "normalized", "is_protected",
-    "status", "source_item_id", "context_snippet",
-    "decided_by", "decided_at", "created_at",
+    "id",
+    "group_id",
+    "surface",
+    "normalized",
+    "is_protected",
+    "status",
+    "source_item_id",
+    "context_snippet",
+    "decided_by",
+    "decided_at",
+    "created_at",
 )
 _TERM_RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in _TERM_COLUMNS)
 
@@ -89,26 +105,50 @@ async def create_glossary_group(
     ).format(returning=_GROUP_RETURNING)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {
-            "id": group_id, "project_id": project_id, "scope": scope,
-            "scope_id": scope_id, "canonical": canonical,
-            "definition": definition, "created_by": created_by,
-        })
+        await cur.execute(
+            query,
+            {
+                "id": group_id,
+                "project_id": project_id,
+                "scope": scope,
+                "scope_id": scope_id,
+                "canonical": canonical,
+                "definition": definition,
+                "created_by": created_by,
+            },
+        )
         row = await cur.fetchone()
         assert row is not None
         return _row_to_group(row)
 
 
 async def get_glossary_group(
-    conn: AsyncConnection[Any], group_id: str
+    conn: AsyncConnection[Any],
+    group_id: str,
+    *,
+    project_id: str | None = None,
 ) -> GlossaryGroup | None:
-    """Fetch a glossary group by ID."""
-    query = sql.SQL(
-        "SELECT {columns} FROM glossary_groups WHERE id = %(id)s"
-    ).format(columns=_GROUP_RETURNING)
+    """Fetch a glossary group by ID or hex prefix (≥8 chars).
+
+    Returns ``None`` when nothing matches; raises
+    :class:`AmbiguousIdError` when a prefix matches multiple groups.
+    Pass *project_id* to scope prefix lookups.
+    """
+    resolved = await resolve_uuid_prefix(
+        conn,
+        "glossary_groups",
+        group_id,
+        project_id=project_id,
+        label_column="canonical",
+    )
+    if resolved is None:
+        return None
+    query = sql.SQL("SELECT {columns} FROM glossary_groups WHERE id = %(id)s").format(
+        columns=_GROUP_RETURNING
+    )
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": group_id})
+        await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
         return _row_to_group(row) if row else None
 
@@ -133,9 +173,7 @@ async def list_glossary_groups(
             " ORDER BY gg.created_at DESC"
             " LIMIT %(limit)s OFFSET %(offset)s"
         ).format(
-            columns=sql.SQL(", ").join(
-                sql.SQL("gg.") + sql.Identifier(c) for c in _GROUP_COLUMNS
-            )
+            columns=sql.SQL(", ").join(sql.SQL("gg.") + sql.Identifier(c) for c in _GROUP_COLUMNS)
         )
     else:
         query = sql.SQL(
@@ -146,9 +184,14 @@ async def list_glossary_groups(
         ).format(columns=_GROUP_RETURNING)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {
-            "project_id": project_id, "limit": limit, "offset": offset,
-        })
+        await cur.execute(
+            query,
+            {
+                "project_id": project_id,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
         return [_row_to_group(row) for row in await cur.fetchall()]
 
 
@@ -179,12 +222,19 @@ async def create_glossary_term(
     ).format(returning=_TERM_RETURNING)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {
-            "id": term_id, "group_id": group_id, "surface": surface,
-            "normalized": normalized, "is_protected": is_protected,
-            "status": status, "source_item_id": source_item_id,
-            "context_snippet": context_snippet,
-        })
+        await cur.execute(
+            query,
+            {
+                "id": term_id,
+                "group_id": group_id,
+                "surface": surface,
+                "normalized": normalized,
+                "is_protected": is_protected,
+                "status": status,
+                "source_item_id": source_item_id,
+                "context_snippet": context_snippet,
+            },
+        )
         row = await cur.fetchone()
         assert row is not None
         return _row_to_term(row)
@@ -201,9 +251,7 @@ async def list_pending_terms(
     Includes both grouped pending terms (via group → project) and orphan
     pending terms (via source_item → project).
     """
-    t_cols = sql.SQL(", ").join(
-        sql.SQL("gt.") + sql.Identifier(c) for c in _TERM_COLUMNS
-    )
+    t_cols = sql.SQL(", ").join(sql.SQL("gt.") + sql.Identifier(c) for c in _TERM_COLUMNS)
     query = sql.SQL(
         "SELECT {columns} FROM glossary_terms gt"
         " LEFT JOIN glossary_groups gg ON gt.group_id = gg.id"
@@ -255,10 +303,15 @@ async def approve_term(
     ).format(returning=_TERM_RETURNING)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {
-            "term_id": term_id, "group_id": group_id,
-            "status": new_status, "actor_id": actor_id,
-        })
+        await cur.execute(
+            query,
+            {
+                "term_id": term_id,
+                "group_id": group_id,
+                "status": new_status,
+                "actor_id": actor_id,
+            },
+        )
         row = await cur.fetchone()
         return _row_to_term(row) if row else None
 
@@ -328,8 +381,7 @@ async def merge_groups(
     """
     # Move all terms from source to target
     result = await conn.execute(
-        "UPDATE glossary_terms SET group_id = %(target)s"
-        " WHERE group_id = %(source)s",
+        "UPDATE glossary_terms SET group_id = %(target)s WHERE group_id = %(source)s",
         {"source": source_group_id, "target": target_group_id},
     )
     if result.rowcount == 0:

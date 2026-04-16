@@ -13,11 +13,16 @@ from typing import Any
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
+from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import System
 
 _COLUMNS = (
-    "id", "project_id", "name", "description",
-    "depends_on_system_ids", "status",
+    "id",
+    "project_id",
+    "name",
+    "description",
+    "depends_on_system_ids",
+    "status",
 )
 _RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in _COLUMNS)
 
@@ -80,26 +85,33 @@ async def create_system(
 
 
 async def get_system(
-    conn: AsyncConnection[Any], system_id: str
+    conn: AsyncConnection[Any],
+    system_id: str,
+    *,
+    project_id: str | None = None,
 ) -> System | None:
-    """Fetch a system by ID.  Returns ``None`` if not found."""
-    query = sql.SQL("SELECT {columns} FROM systems WHERE id = %(id)s").format(
-        columns=_RETURNING
+    """Fetch a system by ID or hex prefix (≥8 chars).
+
+    Returns ``None`` when nothing matches; raises
+    :class:`AmbiguousIdError` when a prefix matches multiple rows.
+    Pass *project_id* to scope prefix lookups to a single project.
+    """
+    resolved = await resolve_uuid_prefix(
+        conn, "systems", system_id, project_id=project_id, label_column="name"
     )
+    if resolved is None:
+        return None
+    query = sql.SQL("SELECT {columns} FROM systems WHERE id = %(id)s").format(columns=_RETURNING)
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": system_id})
+        await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
         return _row_to_system(row) if row else None
 
 
-async def list_systems(
-    conn: AsyncConnection[Any], project_id: str
-) -> list[System]:
+async def list_systems(conn: AsyncConnection[Any], project_id: str) -> list[System]:
     """List all systems for a project, ordered by name."""
     query = sql.SQL(
-        "SELECT {columns} FROM systems"
-        " WHERE project_id = %(project_id)s"
-        " ORDER BY name"
+        "SELECT {columns} FROM systems WHERE project_id = %(project_id)s ORDER BY name"
     ).format(columns=_RETURNING)
 
     async with conn.cursor(row_factory=dict_row) as cur:
@@ -148,9 +160,7 @@ async def update_system(
     if not clauses:
         return await get_system(conn, system_id)
 
-    query = sql.SQL(
-        "UPDATE systems SET {sets} WHERE id = %(id)s RETURNING {returning}"
-    ).format(
+    query = sql.SQL("UPDATE systems SET {sets} WHERE id = %(id)s RETURNING {returning}").format(
         sets=sql.SQL(", ").join(clauses),
         returning=_RETURNING,
     )

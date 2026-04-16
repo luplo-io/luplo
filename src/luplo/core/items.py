@@ -17,6 +17,7 @@ from psycopg.types.json import Jsonb
 
 from luplo.core import item_types as _item_types
 from luplo.core.errors import ValidationError
+from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import Item, ItemCreate
 
 _ITEM_FIELDS: frozenset[str] = frozenset(f.name for f in dataclasses.fields(Item))
@@ -103,9 +104,7 @@ async def create_item(conn: AsyncConnection[Any], data: ItemCreate) -> Item:
     # Research items must carry a source_url. DB has a CHECK constraint as
     # the ultimate guard, but raise early here for a clean error message.
     if data.item_type == "research" and not data.source_url:
-        raise ValidationError(
-            "item_type='research' requires source_url (the cached URL)"
-        )
+        raise ValidationError("item_type='research' requires source_url (the cached URL)")
 
     item_id = str(uuid.uuid4())
 
@@ -168,31 +167,66 @@ async def create_item(conn: AsyncConnection[Any], data: ItemCreate) -> Item:
 # ── Read ─────────────────────────────────────────────────────────
 
 
-async def get_item(conn: AsyncConnection[Any], item_id: str) -> Item | None:
-    """Fetch a single item by ID.
+async def get_item(
+    conn: AsyncConnection[Any],
+    item_id: str,
+    *,
+    project_id: str | None = None,
+) -> Item | None:
+    """Fetch a single item by ID or hex prefix.
 
-    Returns ``None`` if the item does not exist or has been soft-deleted.
+    Args:
+        conn: Open async connection.
+        item_id: Either a full UUID or a hex prefix of at least
+            :data:`luplo.core.id_resolve.MIN_PREFIX_LENGTH` characters.
+        project_id: Optional project scope for prefix lookups. Strongly
+            recommended whenever the caller knows it; without it, prefix
+            collisions are evaluated across every project in the
+            database.
+
+    Returns:
+        The matching item, or ``None`` when no row exists / the row is
+        soft-deleted.
+
+    Raises:
+        AmbiguousIdError: If the prefix matches multiple rows.
+        IdTooShortError: If a hex prefix shorter than the minimum is
+            supplied.
+        InvalidIdFormatError: If the input is not a UUID or hex prefix.
     """
-    query = sql.SQL(
-        "SELECT {columns} FROM items WHERE id = %(id)s AND deleted_at IS NULL"
-    ).format(columns=_RETURNING)
+    resolved = await resolve_uuid_prefix(conn, "items", item_id, project_id=project_id)
+    if resolved is None:
+        return None
+
+    query = sql.SQL("SELECT {columns} FROM items WHERE id = %(id)s AND deleted_at IS NULL").format(
+        columns=_RETURNING
+    )
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": item_id})
+        await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
         return _row_to_item(row) if row else None
 
 
 async def get_item_including_deleted(
-    conn: AsyncConnection[Any], item_id: str
+    conn: AsyncConnection[Any],
+    item_id: str,
+    *,
+    project_id: str | None = None,
 ) -> Item | None:
-    """Fetch a single item by ID, even if soft-deleted."""
-    query = sql.SQL("SELECT {columns} FROM items WHERE id = %(id)s").format(
-        columns=_RETURNING
-    )
+    """Fetch a single item by ID or prefix, even if soft-deleted.
+
+    See :func:`get_item` for argument and exception semantics. The only
+    difference is that soft-deleted rows are still returned.
+    """
+    resolved = await resolve_uuid_prefix(conn, "items", item_id, project_id=project_id)
+    if resolved is None:
+        return None
+
+    query = sql.SQL("SELECT {columns} FROM items WHERE id = %(id)s").format(columns=_RETURNING)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": item_id})
+        await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
         return _row_to_item(row) if row else None
 
@@ -263,9 +297,7 @@ async def list_items(
 # ── Delete (soft) ────────────────────────────────────────────────
 
 
-async def delete_item(
-    conn: AsyncConnection[Any], item_id: str, *, actor_id: str
-) -> bool:
+async def delete_item(conn: AsyncConnection[Any], item_id: str, *, actor_id: str) -> bool:
     """Soft-delete an item by setting ``deleted_at``.
 
     The row is never removed.  ``get_item`` will return ``None`` for it,
@@ -291,9 +323,7 @@ async def delete_item(
 # ── Supersedes chain ─────────────────────────────────────────────
 
 
-async def get_supersedes_chain(
-    conn: AsyncConnection[Any], item_id: str
-) -> list[Item]:
+async def get_supersedes_chain(conn: AsyncConnection[Any], item_id: str) -> list[Item]:
     """Walk the ``supersedes_id`` chain from *item_id* back to the original.
 
     Returns the full chain ordered **oldest-first** (the original item is
@@ -301,9 +331,7 @@ async def get_supersedes_chain(
 
     If *item_id* does not exist, returns an empty list.
     """
-    _cols_aliased = sql.SQL(", ").join(
-        sql.SQL("i.") + sql.Identifier(c) for c in _COLUMNS
-    )
+    _cols_aliased = sql.SQL(", ").join(sql.SQL("i.") + sql.Identifier(c) for c in _COLUMNS)
     query = sql.SQL(
         "WITH RECURSIVE chain AS ("
         "  SELECT {columns}, 0 AS depth FROM items WHERE id = %(id)s"

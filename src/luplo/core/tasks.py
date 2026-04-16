@@ -23,10 +23,12 @@ from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
 from luplo.core.errors import (
+    AmbiguousIdError,
     TaskAlreadyInProgressError,
     TaskNotFoundError,
     TaskStateTransitionError,
 )
+from luplo.core.id_resolve import build_seed_clause
 from luplo.core.items import _row_to_item, create_item, get_item_including_deleted
 from luplo.core.models import Item, ItemCreate
 
@@ -52,17 +54,36 @@ def _check_transition(task_id: str, current: str, target: str) -> None:
 
 
 async def _resolve_head(
-    conn: AsyncConnection[Any], any_chain_id: str, *, for_update: bool = False
+    conn: AsyncConnection[Any],
+    any_chain_id: str,
+    *,
+    for_update: bool = False,
+    project_id: str | None = None,
 ) -> Item:
     """Walk the supersede chain forward from *any_chain_id* and return the head.
 
-    Uses a recursive CTE to follow ``supersedes_id`` links forward.
-    Raises ``TaskNotFoundError`` if no row matches or the head is not a task.
+    Accepts a full UUID or a hex prefix (≥8 chars). When a prefix matches
+    multiple seed rows the recursive CTE walks each forward; rows in the
+    same chain naturally collapse to one head, so prefix matches inside a
+    single chain are not ambiguous. Truly distinct chain heads raise
+    :class:`AmbiguousIdError`.
+
+    Raises:
+        TaskNotFoundError: When no row matches or the resolved head is
+            not a task.
+        AmbiguousIdError: When the prefix resolves to multiple heads
+            across distinct chains.
     """
+    params: dict[str, Any] = {}
+    seed = build_seed_clause(any_chain_id, params)
+    if project_id is not None:
+        params["pid"] = project_id
+        seed = sql.SQL("({seed}) AND project_id = %(pid)s").format(seed=seed)
+
     lock = sql.SQL("FOR UPDATE") if for_update else sql.SQL("")
     query = sql.SQL("""
         WITH RECURSIVE chain(id) AS (
-            SELECT id FROM items WHERE id = %(id)s
+            SELECT id FROM items WHERE {seed}
             UNION
             SELECT i.id FROM items i, chain c WHERE i.supersedes_id = c.id
         )
@@ -73,15 +94,20 @@ async def _resolve_head(
               SELECT 1 FROM items i2 WHERE i2.supersedes_id = items.id
           )
         {lock}
-    """).format(lock=lock)
+        LIMIT 2
+    """).format(seed=seed, lock=lock)
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": any_chain_id})
-        row = await cur.fetchone()
-    if row is None:
+        await cur.execute(query, params)
+        rows = await cur.fetchall()
+    if not rows:
         raise TaskNotFoundError(any_chain_id)
-    if row["item_type"] != ITEM_TYPE:
+    task_rows = [r for r in rows if r["item_type"] == ITEM_TYPE]
+    if not task_rows:
         raise TaskNotFoundError(any_chain_id)
-    return _row_to_item(row)
+    if len(task_rows) > 1:
+        matches = [(str(r["id"]), str(r.get("title") or "")) for r in task_rows]
+        raise AmbiguousIdError(any_chain_id, matches)
+    return _row_to_item(task_rows[0])
 
 
 # ── Create ──────────────────────────────────────────────────────
@@ -128,9 +154,7 @@ async def create_task(
     )
 
 
-async def _next_sort_order(
-    conn: AsyncConnection[Any], work_unit_id: str
-) -> int:
+async def _next_sort_order(conn: AsyncConnection[Any], work_unit_id: str) -> int:
     """Return the next sort_order using gap-10 strategy."""
     async with conn.cursor() as cur:
         await cur.execute(
@@ -146,10 +170,20 @@ async def _next_sort_order(
 # ── Read ────────────────────────────────────────────────────────
 
 
-async def get_task(conn: AsyncConnection[Any], task_id: str) -> Item | None:
-    """Fetch the head of the chain containing *task_id*. ``None`` if missing."""
+async def get_task(
+    conn: AsyncConnection[Any],
+    task_id: str,
+    *,
+    project_id: str | None = None,
+) -> Item | None:
+    """Fetch the head of the chain containing *task_id*.
+
+    Accepts a full UUID or a hex prefix (≥8 chars). Returns ``None`` if
+    no row matches; raises :class:`AmbiguousIdError` if a prefix matches
+    distinct chains.
+    """
     try:
-        return await _resolve_head(conn, task_id)
+        return await _resolve_head(conn, task_id, project_id=project_id)
     except TaskNotFoundError:
         return None
 
@@ -168,10 +202,7 @@ async def list_tasks(
         sql.SQL("work_unit_id = %(wu)s"),
         sql.SQL("item_type = 'task'"),
         sql.SQL("deleted_at IS NULL"),
-        sql.SQL(
-            "NOT EXISTS (SELECT 1 FROM items i2"
-            " WHERE i2.supersedes_id = items.id)"
-        ),
+        sql.SQL("NOT EXISTS (SELECT 1 FROM items i2 WHERE i2.supersedes_id = items.id)"),
     ]
     params: dict[str, Any] = {"wu": work_unit_id}
     if status is not None:
@@ -188,9 +219,7 @@ async def list_tasks(
         return [_row_to_item(r) for r in await cur.fetchall()]
 
 
-async def get_in_progress_task(
-    conn: AsyncConnection[Any], work_unit_id: str
-) -> Item | None:
+async def get_in_progress_task(conn: AsyncConnection[Any], work_unit_id: str) -> Item | None:
     """Return the single in_progress task head for *work_unit_id*, or ``None``."""
     rows = await list_tasks(conn, work_unit_id, status="in_progress")
     return rows[0] if rows else None
@@ -353,9 +382,7 @@ async def reorder_tasks(
     # Single-statement update for atomicity. CASE WHEN keeps one round-trip.
     new_orders = {h.id: (i + 1) * 10 for i, h in enumerate(heads)}
     case_clauses = sql.SQL(" ").join(
-        sql.SQL("WHEN id = {hid} THEN {n}").format(
-            hid=sql.Literal(hid), n=sql.Literal(n)
-        )
+        sql.SQL("WHEN id = {hid} THEN {n}").format(hid=sql.Literal(hid), n=sql.Literal(n))
         for hid, n in new_orders.items()
     )
     ids_list = sql.SQL(", ").join(sql.Literal(h.id) for h in heads)

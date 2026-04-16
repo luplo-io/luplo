@@ -38,9 +38,7 @@ async def test_create_system_minimal(conn: object, seed_project: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_system_duplicate_name(
-    conn: object, seed_project: str
-) -> None:
+async def test_create_system_duplicate_name(conn: object, seed_project: str) -> None:
     await create_system(conn, project_id=seed_project, name="dup")  # type: ignore[arg-type]
     with pytest.raises(UniqueViolation):
         await create_system(conn, project_id=seed_project, name="dup")  # type: ignore[arg-type]
@@ -49,7 +47,9 @@ async def test_create_system_duplicate_name(
 @pytest.mark.asyncio
 async def test_get_system_found(conn: object, seed_project: str) -> None:
     created = await create_system(
-        conn, project_id=seed_project, name="findme"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        name="findme",  # type: ignore[arg-type]
     )
     fetched = await get_system(conn, created.id)  # type: ignore[arg-type]
     assert fetched is not None
@@ -58,7 +58,13 @@ async def test_get_system_found(conn: object, seed_project: str) -> None:
 
 @pytest.mark.asyncio
 async def test_get_system_not_found(conn: object) -> None:
-    assert await get_system(conn, "nope") is None  # type: ignore[arg-type]
+    assert (
+        await get_system(  # type: ignore[arg-type]
+            conn,
+            "00000000-dead-4dea-8dea-000000000000",
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -77,14 +83,16 @@ async def test_list_systems_empty(conn: object, seed_project: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_system_single_field(
-    conn: object, seed_project: str
-) -> None:
+async def test_update_system_single_field(conn: object, seed_project: str) -> None:
     s = await create_system(
-        conn, project_id=seed_project, name="updatable"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        name="updatable",  # type: ignore[arg-type]
     )
     updated = await update_system(
-        conn, s.id, description="New desc"  # type: ignore[arg-type]
+        conn,
+        s.id,
+        description="New desc",  # type: ignore[arg-type]
     )
     assert updated is not None
     assert updated.description == "New desc"
@@ -92,11 +100,11 @@ async def test_update_system_single_field(
 
 
 @pytest.mark.asyncio
-async def test_update_system_multiple_fields(
-    conn: object, seed_project: str
-) -> None:
+async def test_update_system_multiple_fields(conn: object, seed_project: str) -> None:
     s = await create_system(
-        conn, project_id=seed_project, name="multi"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        name="multi",  # type: ignore[arg-type]
     )
     updated = await update_system(
         conn,  # type: ignore[arg-type]
@@ -112,9 +120,7 @@ async def test_update_system_multiple_fields(
 
 
 @pytest.mark.asyncio
-async def test_update_system_clear_field(
-    conn: object, seed_project: str
-) -> None:
+async def test_update_system_clear_field(conn: object, seed_project: str) -> None:
     s = await create_system(
         conn,  # type: ignore[arg-type]
         project_id=seed_project,
@@ -127,11 +133,11 @@ async def test_update_system_clear_field(
 
 
 @pytest.mark.asyncio
-async def test_update_system_no_changes(
-    conn: object, seed_project: str
-) -> None:
+async def test_update_system_no_changes(conn: object, seed_project: str) -> None:
     s = await create_system(
-        conn, project_id=seed_project, name="noop"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        name="noop",  # type: ignore[arg-type]
     )
     updated = await update_system(conn, s.id)  # type: ignore[arg-type]
     assert updated is not None

@@ -17,7 +17,12 @@ from typing import Any
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
-from luplo.core.errors import QACheckNotFoundError, QAStateTransitionError
+from luplo.core.errors import (
+    AmbiguousIdError,
+    QACheckNotFoundError,
+    QAStateTransitionError,
+)
+from luplo.core.id_resolve import build_seed_clause
 from luplo.core.items import _row_to_item, create_item
 from luplo.core.models import Item, ItemCreate
 
@@ -44,12 +49,26 @@ def _check_transition(qa_id: str, current: str, target: str) -> None:
 
 
 async def _resolve_head(
-    conn: AsyncConnection[Any], any_chain_id: str
+    conn: AsyncConnection[Any],
+    any_chain_id: str,
+    *,
+    project_id: str | None = None,
 ) -> Item:
-    """Walk the supersede chain forward and return the head qa_check row."""
+    """Walk the supersede chain forward and return the head qa_check row.
+
+    Accepts a full UUID or hex prefix (≥8 chars). Multiple seed matches
+    in the same supersede chain collapse to one head; matches across
+    distinct chains raise :class:`AmbiguousIdError`.
+    """
+    params: dict[str, Any] = {}
+    seed = build_seed_clause(any_chain_id, params)
+    if project_id is not None:
+        params["pid"] = project_id
+        seed = sql.SQL("({seed}) AND project_id = %(pid)s").format(seed=seed)
+
     query = sql.SQL("""
         WITH RECURSIVE chain(id) AS (
-            SELECT id FROM items WHERE id = %(id)s
+            SELECT id FROM items WHERE {seed}
             UNION
             SELECT i.id FROM items i, chain c WHERE i.supersedes_id = c.id
         )
@@ -59,13 +78,18 @@ async def _resolve_head(
           AND NOT EXISTS (
               SELECT 1 FROM items i2 WHERE i2.supersedes_id = items.id
           )
-    """)
+        LIMIT 2
+    """).format(seed=seed)
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": any_chain_id})
-        row = await cur.fetchone()
-    if row is None or row["item_type"] != ITEM_TYPE:
+        await cur.execute(query, params)
+        rows = await cur.fetchall()
+    qa_rows = [r for r in rows if r["item_type"] == ITEM_TYPE]
+    if not qa_rows:
         raise QACheckNotFoundError(any_chain_id)
-    return _row_to_item(row)
+    if len(qa_rows) > 1:
+        matches = [(str(r["id"]), str(r.get("title") or "")) for r in qa_rows]
+        raise AmbiguousIdError(any_chain_id, matches)
+    return _row_to_item(qa_rows[0])
 
 
 # ── Create ──────────────────────────────────────────────────────
@@ -119,9 +143,20 @@ async def create_qa(
 # ── Read ────────────────────────────────────────────────────────
 
 
-async def get_qa(conn: AsyncConnection[Any], qa_id: str) -> Item | None:
+async def get_qa(
+    conn: AsyncConnection[Any],
+    qa_id: str,
+    *,
+    project_id: str | None = None,
+) -> Item | None:
+    """Fetch the head of the chain containing *qa_id*.
+
+    Accepts a full UUID or hex prefix (≥8 chars). Returns ``None`` if
+    nothing matches; raises :class:`AmbiguousIdError` if a prefix
+    resolves to multiple distinct chains.
+    """
     try:
-        return await _resolve_head(conn, qa_id)
+        return await _resolve_head(conn, qa_id, project_id=project_id)
     except QACheckNotFoundError:
         return None
 
@@ -134,18 +169,13 @@ async def _list_heads(
     conditions: list[sql.Composable] = [
         sql.SQL("item_type = 'qa_check'"),
         sql.SQL("deleted_at IS NULL"),
-        sql.SQL(
-            "NOT EXISTS (SELECT 1 FROM items i2"
-            " WHERE i2.supersedes_id = items.id)"
-        ),
+        sql.SQL("NOT EXISTS (SELECT 1 FROM items i2 WHERE i2.supersedes_id = items.id)"),
         *extra_conditions,
     ]
     where = sql.SQL(" AND ").join(conditions)
-    query = sql.SQL(
-        "SELECT items.* FROM items"
-        " WHERE {where}"
-        " ORDER BY created_at DESC"
-    ).format(where=where)
+    query = sql.SQL("SELECT items.* FROM items WHERE {where} ORDER BY created_at DESC").format(
+        where=where
+    )
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, params)
         return [_row_to_item(r) for r in await cur.fetchall()]
@@ -170,9 +200,7 @@ async def list_qa(
     return await _list_heads(conn, extra, params)
 
 
-async def list_pending_for_task(
-    conn: AsyncConnection[Any], task_id: str
-) -> list[Item]:
+async def list_pending_for_task(conn: AsyncConnection[Any], task_id: str) -> list[Item]:
     """qa_checks targeting *task_id* that are not yet passed (GIN-hit)."""
     extra: list[sql.Composable] = [
         sql.SQL("context->'target_task_ids' ? %(tid)s"),
@@ -181,9 +209,7 @@ async def list_pending_for_task(
     return await _list_heads(conn, extra, {"tid": task_id})
 
 
-async def list_pending_for_item(
-    conn: AsyncConnection[Any], item_id: str
-) -> list[Item]:
+async def list_pending_for_item(conn: AsyncConnection[Any], item_id: str) -> list[Item]:
     """qa_checks targeting *item_id* that are not yet passed (GIN-hit)."""
     extra: list[sql.Composable] = [
         sql.SQL("context->'target_item_ids' ? %(iid)s"),
@@ -192,9 +218,7 @@ async def list_pending_for_item(
     return await _list_heads(conn, extra, {"iid": item_id})
 
 
-async def list_pending_for_wu(
-    conn: AsyncConnection[Any], work_unit_id: str
-) -> list[Item]:
+async def list_pending_for_wu(conn: AsyncConnection[Any], work_unit_id: str) -> list[Item]:
     """All pending qa_checks attached to *work_unit_id*."""
     extra: list[sql.Composable] = [
         sql.SQL("work_unit_id = %(wu)s"),
@@ -229,9 +253,7 @@ async def _supersede_with_context(
     )
 
 
-async def start_qa(
-    conn: AsyncConnection[Any], qa_id: str, *, actor_id: str
-) -> Item:
+async def start_qa(conn: AsyncConnection[Any], qa_id: str, *, actor_id: str) -> Item:
     head = await _resolve_head(conn, qa_id)
     _check_transition(head.id, head.context.get("status", ""), "in_progress")
     new_context = {**head.context, "status": "in_progress"}
@@ -248,8 +270,8 @@ async def pass_qa(
     head = await _resolve_head(conn, qa_id)
     _check_transition(head.id, head.context.get("status", ""), "passed")
     from datetime import UTC, datetime
-    new_context = {**head.context, "status": "passed",
-                   "passed_at": datetime.now(UTC).isoformat()}
+
+    new_context = {**head.context, "status": "passed", "passed_at": datetime.now(UTC).isoformat()}
     if evidence:
         new_context["evidence"] = evidence
     new_context.pop("revalidation_reason", None)

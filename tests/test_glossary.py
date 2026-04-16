@@ -38,7 +38,9 @@ async def test_create_group(conn: object, seed_project: str, seed_actor: str) ->
 @pytest.mark.asyncio
 async def test_get_group(conn: object, seed_project: str) -> None:
     created = await create_glossary_group(
-        conn, project_id=seed_project, canonical="karma"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="karma",  # type: ignore[arg-type]
     )
     fetched = await get_glossary_group(conn, created.id)  # type: ignore[arg-type]
     assert fetched is not None
@@ -47,16 +49,26 @@ async def test_get_group(conn: object, seed_project: str) -> None:
 
 @pytest.mark.asyncio
 async def test_get_group_not_found(conn: object) -> None:
-    assert await get_glossary_group(conn, "nope") is None  # type: ignore[arg-type]
+    assert (
+        await get_glossary_group(  # type: ignore[arg-type]
+            conn,
+            "00000000-dead-4dea-8dea-000000000000",
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
 async def test_list_groups(conn: object, seed_project: str) -> None:
     await create_glossary_group(
-        conn, project_id=seed_project, canonical="alpha"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="alpha",  # type: ignore[arg-type]
     )
     await create_glossary_group(
-        conn, project_id=seed_project, canonical="beta"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="beta",  # type: ignore[arg-type]
     )
 
     groups = await list_glossary_groups(conn, seed_project)  # type: ignore[arg-type]
@@ -70,7 +82,9 @@ async def test_list_groups(conn: object, seed_project: str) -> None:
 @pytest.mark.asyncio
 async def test_create_term(conn: object, seed_project: str) -> None:
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     t = await create_glossary_term(
         conn,  # type: ignore[arg-type]
@@ -87,15 +101,23 @@ async def test_create_term(conn: object, seed_project: str) -> None:
 @pytest.mark.asyncio
 async def test_list_pending_terms(conn: object, seed_project: str) -> None:
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="shop", normalized="shop", status="pending",
+        group_id=g.id,
+        surface="shop",
+        normalized="shop",
+        status="pending",
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="vendor", normalized="vendor", status="canonical",
+        group_id=g.id,
+        surface="vendor",
+        normalized="vendor",
+        status="canonical",
     )
 
     pending = await list_pending_terms(conn, seed_project)  # type: ignore[arg-type]
@@ -107,19 +129,25 @@ async def test_list_pending_terms(conn: object, seed_project: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_approve_term_as_alias(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_approve_term_as_alias(conn: object, seed_project: str, seed_actor: str) -> None:
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     t = await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="shop", normalized="shop", status="pending",
+        group_id=g.id,
+        surface="shop",
+        normalized="shop",
+        status="pending",
     )
 
     approved = await approve_term(
-        conn, t.id, group_id=g.id, actor_id=seed_actor  # type: ignore[arg-type]
+        conn,
+        t.id,
+        group_id=g.id,
+        actor_id=seed_actor,  # type: ignore[arg-type]
     )
     assert approved is not None
     assert approved.status == "alias"
@@ -127,38 +155,51 @@ async def test_approve_term_as_alias(
 
 
 @pytest.mark.asyncio
-async def test_approve_term_as_canonical(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_approve_term_as_canonical(conn: object, seed_project: str, seed_actor: str) -> None:
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     t = await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="merchant", normalized="merchant", status="pending",
+        group_id=g.id,
+        surface="merchant",
+        normalized="merchant",
+        status="pending",
     )
 
     approved = await approve_term(
-        conn, t.id, group_id=g.id, actor_id=seed_actor, as_canonical=True  # type: ignore[arg-type]
+        conn,
+        t.id,
+        group_id=g.id,
+        actor_id=seed_actor,
+        as_canonical=True,  # type: ignore[arg-type]
     )
     assert approved is not None
     assert approved.status == "canonical"
 
 
 @pytest.mark.asyncio
-async def test_reject_term(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_reject_term(conn: object, seed_project: str, seed_actor: str) -> None:
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     t = await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="unrelated", normalized="unrelated", status="pending",
+        group_id=g.id,
+        surface="unrelated",
+        normalized="unrelated",
+        status="pending",
     )
 
     rejection = await reject_term(
-        conn, t.id, actor_id=seed_actor, reason="Not a synonym"  # type: ignore[arg-type]
+        conn,
+        t.id,
+        actor_id=seed_actor,
+        reason="Not a synonym",  # type: ignore[arg-type]
     )
     assert rejection is not None
     assert rejection.rejected_term == "unrelated"
@@ -171,19 +212,23 @@ async def test_reject_term_prevents_reproposal(
 ) -> None:
     """Verify rejection row exists in glossary_rejections."""
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     t = await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="wrong", normalized="wrong", status="pending",
+        group_id=g.id,
+        surface="wrong",
+        normalized="wrong",
+        status="pending",
     )
     await reject_term(conn, t.id, actor_id=seed_actor)  # type: ignore[arg-type]
 
     # Check rejection record exists via raw SQL
     async with conn.cursor() as cur:  # type: ignore[union-attr]
         await cur.execute(
-            "SELECT 1 FROM glossary_rejections"
-            " WHERE group_id = %s AND rejected_term = %s",
+            "SELECT 1 FROM glossary_rejections WHERE group_id = %s AND rejected_term = %s",
             (g.id, "wrong"),
         )
         assert await cur.fetchone() is not None
@@ -193,26 +238,37 @@ async def test_reject_term_prevents_reproposal(
 
 
 @pytest.mark.asyncio
-async def test_merge_groups(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_merge_groups(conn: object, seed_project: str, seed_actor: str) -> None:
     g1 = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     g2 = await create_glossary_group(
-        conn, project_id=seed_project, canonical="merchant"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="merchant",  # type: ignore[arg-type]
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g1.id, surface="vendor", normalized="vendor", status="canonical",
+        group_id=g1.id,
+        surface="vendor",
+        normalized="vendor",
+        status="canonical",
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g2.id, surface="merchant", normalized="merchant", status="canonical",
+        group_id=g2.id,
+        surface="merchant",
+        normalized="merchant",
+        status="canonical",
     )
 
     result = await merge_groups(
-        conn, g2.id, g1.id, actor_id=seed_actor  # type: ignore[arg-type]
+        conn,
+        g2.id,
+        g1.id,
+        actor_id=seed_actor,  # type: ignore[arg-type]
     )
     assert result is not None
     assert result.id == g1.id
@@ -222,19 +278,25 @@ async def test_merge_groups(
 
 
 @pytest.mark.asyncio
-async def test_split_term(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_split_term(conn: object, seed_project: str, seed_actor: str) -> None:
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     t = await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="shop", normalized="shop", status="alias",
+        group_id=g.id,
+        surface="shop",
+        normalized="shop",
+        status="alias",
     )
 
     new_group = await split_term(
-        conn, t.id, new_canonical="shop", actor_id=seed_actor  # type: ignore[arg-type]
+        conn,
+        t.id,
+        new_canonical="shop",
+        actor_id=seed_actor,  # type: ignore[arg-type]
     )
     assert new_group is not None
     assert new_group.canonical == "shop"
@@ -245,19 +307,25 @@ async def test_split_term(
 
 
 @pytest.mark.asyncio
-async def test_expand_query_with_synonyms(
-    conn: object, seed_project: str
-) -> None:
+async def test_expand_query_with_synonyms(conn: object, seed_project: str) -> None:
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="vendor", normalized="vendor", status="canonical",
+        group_id=g.id,
+        surface="vendor",
+        normalized="vendor",
+        status="canonical",
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="shop", normalized="shop", status="alias",
+        group_id=g.id,
+        surface="shop",
+        normalized="shop",
+        status="alias",
     )
 
     result = await expand_query(conn, "vendor", seed_project)  # type: ignore[arg-type]
@@ -267,28 +335,32 @@ async def test_expand_query_with_synonyms(
 
 
 @pytest.mark.asyncio
-async def test_expand_query_no_match(
-    conn: object, seed_project: str
-) -> None:
+async def test_expand_query_no_match(conn: object, seed_project: str) -> None:
     result = await expand_query(conn, "unknown term", seed_project)  # type: ignore[arg-type]
     assert result == "unknown & term"
 
 
 @pytest.mark.asyncio
-async def test_expand_query_mixed(
-    conn: object, seed_project: str
-) -> None:
+async def test_expand_query_mixed(conn: object, seed_project: str) -> None:
     """One word matches glossary, one doesn't."""
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="vendor", normalized="vendor", status="canonical",
+        group_id=g.id,
+        surface="vendor",
+        normalized="vendor",
+        status="canonical",
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="shop", normalized="shop", status="alias",
+        group_id=g.id,
+        surface="shop",
+        normalized="shop",
+        status="alias",
     )
 
     result = await expand_query(conn, "vendor budget", seed_project)  # type: ignore[arg-type]

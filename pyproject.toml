@@ -6,12 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "hanyul99" }]
-
-[project.urls]
-Homepage = "https://github.com/luplo-io/luplo"
-Documentation = "https://luplo.readthedocs.io"
-Changelog = "https://github.com/luplo-io/luplo/blob/main/CHANGELOG.md"
-Issues = "https://github.com/luplo-io/luplo/issues"
 dependencies = [
     "typer>=0.15",
     "psycopg[binary]>=3.2",
@@ -23,6 +17,12 @@ dependencies = [
     "keyring>=25.0",
     "jsonschema>=4.23",
 ]
+
+[project.urls]
+Homepage = "https://github.com/luplo-io/luplo"
+Documentation = "https://luplo.readthedocs.io"
+Changelog = "https://github.com/luplo-io/luplo/blob/main/CHANGELOG.md"
+Issues = "https://github.com/luplo-io/luplo/issues"
 
 [project.optional-dependencies]
 server = [

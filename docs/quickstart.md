@@ -164,8 +164,10 @@ uv run lp items add "Use JWT over session cookies" \
     --rationale "Stateless auth scales; the session store is an extra dep."
 ```
 
-Each command prints the created row's ID — keep them handy for the next
-step.
+Each command prints the created row's ID. The CLI accepts the **first
+8 hex characters** as shorthand on later commands, so you don't have to
+copy the entire UUID. Ambiguous prefixes are rejected — see
+{doc}`reference/cli` for the rules.
 
 ## 5. Recall it
 

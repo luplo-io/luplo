@@ -36,6 +36,23 @@ Active work units + recent decisions for the current project.
 | `-p`, `--project` | Override project. |
 | `-s`, `--system` | Filter by system. |
 
+## Identifying rows by prefix
+
+Every CLI command that takes an id (`lp items show <item-id>`,
+`lp task start <task-id>`, `lp work close <work-id>`, …) accepts either
+a full canonical UUID **or** a hex prefix of **at least 8 characters**.
+Dashes in the input are ignored, so you can paste `a85a4555` or
+`a85a-4555` — both resolve the same way.
+
+If a prefix matches more than one row, the CLI prints the conflicting
+ids with a label and exits with status `2`. Type a longer prefix (or
+the full UUID) to disambiguate. Prefix length below the 8-char minimum
+is rejected up front to avoid accidental wide matches.
+
+The MCP server and the HTTP API both require full UUIDs — prefix
+resolution is a CLI-only convenience because LLM and machine callers
+typically already have the full id from a previous list response.
+
 ## Items
 
 ### `lp items add <title>`

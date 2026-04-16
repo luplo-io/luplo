@@ -14,6 +14,7 @@ from typing import Any
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
+from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import WorkUnit
 
 _COLUMNS = (
@@ -99,18 +100,37 @@ async def open_work_unit(
 
 
 async def get_work_unit(
-    conn: AsyncConnection[Any], wu_id: str
+    conn: AsyncConnection[Any],
+    wu_id: str,
+    *,
+    project_id: str | None = None,
 ) -> WorkUnit | None:
-    """Fetch a single work unit by ID.
+    """Fetch a single work unit by ID or hex prefix (≥8 chars).
 
-    Returns ``None`` if not found.
+    Args:
+        conn: Open async connection.
+        wu_id: Full UUID or hex prefix.
+        project_id: Optional scope; strongly recommended whenever the
+            caller knows the project to avoid cross-project collisions.
+
+    Returns:
+        The work unit, or ``None`` when nothing matches.
+
+    Raises:
+        AmbiguousIdError: If the prefix matches multiple rows.
+        IdTooShortError: If the prefix is shorter than the minimum.
+        InvalidIdFormatError: If the input is not a UUID or hex prefix.
     """
+    resolved = await resolve_uuid_prefix(conn, "work_units", wu_id, project_id=project_id)
+    if resolved is None:
+        return None
+
     query = sql.SQL("SELECT {columns} FROM work_units WHERE id = %(id)s").format(
         columns=_RETURNING
     )
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": wu_id})
+        await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
         return _row_to_work_unit(row) if row else None
 

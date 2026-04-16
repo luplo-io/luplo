@@ -31,7 +31,6 @@ from luplo.core.models import (
 
 
 class Backend(Protocol):
-
     # ── Projects ─────────────────────────────────────────────────
 
     async def create_project(
@@ -92,11 +91,15 @@ class Backend(Protocol):
         context_extra: dict[str, Any] | None = None,
     ) -> Item: ...
 
-    async def get_task(self, task_id: str) -> Item | None: ...
+    async def get_task(self, task_id: str, *, project_id: str | None = None) -> Item | None:
+        """Fetch a task head by full UUID or hex prefix (≥8 chars).
 
-    async def list_tasks(
-        self, work_unit_id: str, *, status: str | None = None
-    ) -> list[Item]: ...
+        ``project_id`` (when provided) scopes prefix lookups to a single
+        project so prefixes from other projects do not collide.
+        """
+        ...
+
+    async def list_tasks(self, work_unit_id: str, *, status: str | None = None) -> list[Item]: ...
 
     async def get_in_progress_task(self, work_unit_id: str) -> Item | None: ...
 
@@ -106,9 +109,7 @@ class Backend(Protocol):
         self, task_id: str, *, actor_id: str, summary: str | None = None
     ) -> Item: ...
 
-    async def block_task(
-        self, task_id: str, *, actor_id: str, reason: str
-    ) -> Item: ...
+    async def block_task(self, task_id: str, *, actor_id: str, reason: str) -> Item: ...
 
     async def skip_task(
         self, task_id: str, *, actor_id: str, reason: str | None = None
@@ -139,7 +140,12 @@ class Backend(Protocol):
         context_extra: dict[str, Any] | None = None,
     ) -> Item: ...
 
-    async def get_qa(self, qa_id: str) -> Item | None: ...
+    async def get_qa(self, qa_id: str, *, project_id: str | None = None) -> Item | None:
+        """Fetch a qa_check head by full UUID or hex prefix (≥8 chars).
+
+        ``project_id`` (when provided) scopes prefix lookups.
+        """
+        ...
 
     async def list_qa(
         self,
@@ -157,23 +163,15 @@ class Backend(Protocol):
 
     async def start_qa(self, qa_id: str, *, actor_id: str) -> Item: ...
 
-    async def pass_qa(
-        self, qa_id: str, *, actor_id: str, evidence: str | None = None
-    ) -> Item: ...
+    async def pass_qa(self, qa_id: str, *, actor_id: str, evidence: str | None = None) -> Item: ...
 
-    async def fail_qa(
-        self, qa_id: str, *, actor_id: str, reason: str
-    ) -> Item: ...
+    async def fail_qa(self, qa_id: str, *, actor_id: str, reason: str) -> Item: ...
 
-    async def block_qa(
-        self, qa_id: str, *, actor_id: str, reason: str
-    ) -> Item: ...
+    async def block_qa(self, qa_id: str, *, actor_id: str, reason: str) -> Item: ...
 
     async def skip_qa(self, qa_id: str, *, actor_id: str) -> Item: ...
 
-    async def assign_qa(
-        self, qa_id: str, *, actor_id: str, assignee_actor_id: str
-    ) -> Item: ...
+    async def assign_qa(self, qa_id: str, *, actor_id: str, assignee_actor_id: str) -> Item: ...
 
     # ── Work Units ───────────────────────────────────────────────
 
@@ -188,7 +186,9 @@ class Backend(Protocol):
         created_by: str | None = None,
     ) -> WorkUnit: ...
 
-    async def get_work_unit(self, id: str) -> WorkUnit | None: ...
+    async def get_work_unit(self, id: str, *, project_id: str | None = None) -> WorkUnit | None:
+        """Fetch a work unit by full UUID or hex prefix (≥8 chars)."""
+        ...
 
     async def list_work_units(
         self,
@@ -223,7 +223,9 @@ class Backend(Protocol):
         depends_on_system_ids: list[str] | None = None,
     ) -> System: ...
 
-    async def get_system(self, id: str) -> System | None: ...
+    async def get_system(self, id: str, *, project_id: str | None = None) -> System | None:
+        """Fetch a system by full UUID or hex prefix (≥8 chars)."""
+        ...
 
     async def list_systems(self, project_id: str) -> list[System]: ...
 
@@ -245,8 +247,12 @@ class Backend(Protocol):
         (new row superseding the old one). ID is auto-generated."""
         ...
 
-    async def get_item(self, id: str) -> Item | None:
-        """Returns None if not found or soft-deleted."""
+    async def get_item(self, id: str, *, project_id: str | None = None) -> Item | None:
+        """Fetch an item by full UUID or hex prefix (≥8 chars).
+
+        Returns ``None`` if not found or soft-deleted.
+        ``project_id`` (when provided) scopes prefix lookups.
+        """
         ...
 
     async def list_items(
@@ -325,7 +331,11 @@ class Backend(Protocol):
         created_by: str | None = None,
     ) -> GlossaryGroup: ...
 
-    async def get_glossary_group(self, id: str) -> GlossaryGroup | None: ...
+    async def get_glossary_group(
+        self, id: str, *, project_id: str | None = None
+    ) -> GlossaryGroup | None:
+        """Fetch a glossary group by full UUID or hex prefix (≥8 chars)."""
+        ...
 
     async def list_glossary_groups(
         self,
