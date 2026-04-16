@@ -6,39 +6,105 @@
 
 > Long-term memory for engineering decisions.
 
-PMs brief the work. Agents (or humans) execute it. Decisions and knowledge 
-persist across sessions, people, and time — searchable forever.
-
-luplo tracks:
-- **Jobs** — goals you're working toward
-- **Tasks** — units of execution within a job
-- **Decisions** — why you chose this path (and rejected others)
-- **Knowledge** — long-lived facts about your systems
-- **Research** — cached web pages and references, full-text searchable
+luplo tracks decisions, knowledge, policies, documents, tasks, QA checks,
+and research across coding sessions — searchable forever, handed off in one
+command.
 
 ## Why luplo
 
-Most AI coding tools forget. luplo remembers — and shares.
-
-- **Pair handoff in one command.** Your teammate spent 2 hours building 
-  context, making decisions, and researching. `luplo brief` gives you 
-  all of it — instantly.
-- **Verify-gated completion.** Tasks can't be marked done until your 
-  verify command passes. No more "done" tasks that broke the build.
-- **Full-text search built in.** PostgreSQL tsquery on knowledge, 
-  decisions, and research.
-- **Vendor-neutral.** Works with Claude Code, Cursor, Codex, or no AI at all.
-- **Your data, your database.** Self-host with Docker. AGPL-3.0.
+- **Session handoff in one command.** Developer A spent two hours building
+  context. `lp brief` gives developer B all of it — active work units,
+  recent decisions, open tasks — instantly.
+- **Glossary-expanded search.** `"vendor"` finds items indexed under
+  `"shop"` or `"NPC merchant"` via a strict-first glossary pipeline.
+  PostgreSQL tsquery retrieves; optional pgvector reranks.
+- **Tasks and QA as first-class items.** Tasks carry a state machine
+  (proposed → in_progress → done / blocked / skipped). QA checks target
+  tasks or items with coverage and area tags. Blocking a task
+  auto-creates a decision item so the reason surfaces in search.
+- **MCP-native, vendor-neutral.** Ships an MCP server on stdio — works
+  with Claude Code, Claude Desktop, Cursor, Zed, or any
+  [MCP-compatible client](https://modelcontextprotocol.io/clients).
+  Also usable as a plain CLI with no AI at all.
+- **Your data, your database.** PostgreSQL. Local mode for solo use,
+  Remote mode (FastAPI + JWT) for teams. AGPL-3.0.
 
 ## Quick start
 
 ```bash
-uv tool install luplo
-luplo init
-luplo project use myapp
-luplo job create "Auth rework"
-luplo task add "Add JWT validation" --job 1 --verify "go test ./..."
-luplo task start
+# Install
+git clone https://github.com/luplo-io/luplo.git
+cd luplo
+uv sync
+
+# Database
+createdb luplo
+uv run lp init --project myapp --email you@example.com
+
+# Work
+uv run lp work open "Auth rework"
+uv run lp items add "Use JWT over session cookies" \
+    --type decision \
+    --rationale "Stateless auth scales; session store is an extra dep."
+uv run lp task add "Add JWT validation middleware" --wu <work-id>
+uv run lp task start <task-id>
 # (work)
-luplo task done --summary "JWT middleware added"
+uv run lp task done <task-id>
+
+# Recall
+uv run lp brief
+uv run lp items search "auth"
 ```
+
+See the [Quickstart](https://luplo.readthedocs.io/en/latest/quickstart.html)
+for the full walkthrough including uv install, Postgres setup, and MCP
+wiring.
+
+## Connect an MCP client
+
+```json
+{
+  "mcpServers": {
+    "luplo": {
+      "command": "uv",
+      "args": [
+        "run", "--directory", "/absolute/path/to/luplo",
+        "python", "-m", "luplo.mcp"
+      ],
+      "env": {
+        "LUPLO_DB_URL": "postgresql://localhost/luplo"
+      }
+    }
+  }
+}
+```
+
+Drop this into `.mcp.json` (Claude Code), `claude_desktop_config.json`
+(Claude Desktop), `.cursor/mcp.json` (Cursor), or your client's
+equivalent. See the
+[MCP client guide](https://luplo.readthedocs.io/en/latest/guides/mcp-client.html)
+for details.
+
+## Documentation
+
+Full docs at **[luplo.readthedocs.io](https://luplo.readthedocs.io/)**:
+
+- [Concepts](https://luplo.readthedocs.io/en/latest/concepts/) —
+  philosophy, architecture, data model, search pipeline.
+- [Guides](https://luplo.readthedocs.io/en/latest/guides/) —
+  work units, tasks & QA, MCP clients, Remote server, worker.
+- [Reference](https://luplo.readthedocs.io/en/latest/reference/) —
+  CLI, MCP tools, configuration, semantic impact categories.
+- [API reference](https://luplo.readthedocs.io/en/latest/api/) —
+  auto-generated from source.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Short version: English
+everywhere, Google-style docstrings, `ruff` + `pyright strict` +
+`pytest`, Conventional Commits.
+
+## License
+
+[AGPL-3.0-or-later](LICENSE). A CLA will be required for external
+contributions (not yet set up).
