@@ -131,7 +131,7 @@ On a developer's machine, point `.luplo` at the server and log in:
 
 ```bash
 uv run lp init \
-    --project hearthward \
+    --project myapp \
     --email me@example.com \
     --server-url https://luplo.example.com
 

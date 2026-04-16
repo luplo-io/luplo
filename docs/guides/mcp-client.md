@@ -107,7 +107,7 @@ shape.
 
 Once connected, ask the client:
 
-> "What did we decide about vendors in this project?"
+> "What did we decide about auth in this project?"
 
 A correctly wired client will call `luplo_item_search` with a query
 derived from your question, return the matching decisions, and cite
@@ -117,7 +117,7 @@ the project id is wrong.
 You can also verify manually from the CLI:
 
 ```bash
-uv run lp items search "vendor" --project hearthward
+uv run lp items search "auth" --project myapp
 ```
 
 If the CLI sees items and the MCP client doesn't, the client is

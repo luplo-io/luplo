@@ -87,8 +87,8 @@ is **strict-first**:
 3. Human curation queue for candidates the pipeline is unsure about.
 
 Aggressive clustering would raise recall at the cost of false positives,
-and a false grouping ("HTK" pulled into the "height" cluster, "Nakama"
-merged with "friend") is worse than no grouping. It destroys user trust
+and a false grouping (`OTP` pulled into the `opt` cluster, `Sentinel`
+merged with `guard`) is worse than no grouping. It destroys user trust
 in everything else the system says.
 
 See {doc}`search-pipeline` for the full four-stage mechanics.

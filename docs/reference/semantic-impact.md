@@ -9,11 +9,11 @@ The seven categories below are the full vocabulary.
 
 | Tag | Meaning | Example |
 |---|---|---|
-| `numeric_change` | A number in the rationale or rule changed. | Cooldown `8s → 6s`; max-party-size `4 → 6`. |
-| `rule_addition` | A new constraint was appended. | "…and the buff cannot stack with itself." |
-| `rule_removal` | A constraint was deleted. | "…and the buff cannot stack" removed. |
-| `rule_edit` | An existing constraint was substantively rewritten. | "stacks up to 3" → "stacks up to 5 under X". |
-| `scope_shift` | The scope the decision applies to changed. | "vendors" → "vendors and blacksmiths". |
+| `numeric_change` | A number in the rationale or rule changed. | Cache TTL `30m → 15m`; rate limit `100 → 200 req/min`. |
+| `rule_addition` | A new constraint was appended. | "…and all public endpoints require CSRF tokens." |
+| `rule_removal` | A constraint was deleted. | "…and requests must include an X-Client-Id header" removed. |
+| `rule_edit` | An existing constraint was substantively rewritten. | "retry up to 3 times" → "retry up to 5 times with exponential backoff". |
+| `scope_shift` | The scope the decision applies to changed. | "v1 API" → "v1 and v2 APIs". |
 | `rationale_edit` | The reasoning changed but the rule did not. | New justification for the same constraint. |
 | `clerical` | Typos, formatting, whitespace. | Spelling fix, markdown polish. |
 
@@ -50,7 +50,7 @@ From an MCP client:
 {
   "tool": "luplo_history_query",
   "args": {
-    "project_id": "hearthward",
+    "project_id": "myapp",
     "since": "2026-04-10T00:00:00Z",
     "semantic_impacts": ["numeric_change", "rule_addition"]
   }

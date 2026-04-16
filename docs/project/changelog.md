@@ -18,8 +18,8 @@ in that directory.
   `item_type='research'`, so a research item cannot slip in without a
   URL.
 - Added post-freeze (the v0.5 design on 2026-04-13 didn't include it).
-  Parity review with the pre-luplo Hearthward workflow showed research
-  items were load-bearing and would not fit cleanly into `knowledge`.
+  Parity review against the dogfooding workflow showed research items
+  were load-bearing and did not fit cleanly into `knowledge`.
 
 ## v0.5.2 — items as substrate
 

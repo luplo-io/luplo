@@ -15,8 +15,8 @@ command.
 - **Session handoff in one command.** Developer A spent two hours building
   context. `lp brief` gives developer B all of it — active work units,
   recent decisions, open tasks — instantly.
-- **Glossary-expanded search.** `"vendor"` finds items indexed under
-  `"shop"` or `"NPC merchant"` via a strict-first glossary pipeline.
+- **Glossary-expanded search.** `"auth"` finds items indexed under
+  `"authentication"` or `"sign-in"` via a strict-first glossary pipeline.
   PostgreSQL tsquery retrieves; optional pgvector reranks.
 - **Tasks and QA as first-class items.** Tasks carry a state machine
   (proposed → in_progress → done / blocked / skipped). QA checks target

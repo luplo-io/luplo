@@ -28,10 +28,11 @@ supersede pattern.
 ### Add a task
 
 ```bash
-uv run lp task add "Wire vendor dialogue to inventory" \
+uv run lp task add "Add JWT validation middleware" \
     --wu a85a4555 \
-    --system vendor \
-    --body "Hook dialogue tree events into inventory.open()."
+    --system auth \
+    --body "Register middleware on the protected router; verify signature, \
+            expiry, and issuer before passing to handlers."
 ```
 
 `--wu` is required: tasks always belong to a work unit.
@@ -70,7 +71,7 @@ presentation state and shouldn't bloat the chain.
 
 ```bash
 uv run lp task blocked <task-id> \
-    --reason "Waiting on currency formatting lib decision."
+    --reason "Waiting on logging library decision (stdlib vs structlog)."
 ```
 
 `blocked` does three things in one transaction:
@@ -109,13 +110,13 @@ QA checks carry two classification fields in their context:
 ### Add a QA check
 
 ```bash
-uv run lp qa add "Vendor shop UI responsive at 480px" \
+uv run lp qa add "Login form responsive at 320px viewport" \
     --coverage human_only \
     --area ux,a11y \
     --task <task-id-1> --task <task-id-2> \
     --wu a85a4555 \
-    --body "Open vendor → dialogue → sales tab. Verify layout, \
-            focus order, and keyboard navigation."
+    --body "Visit /login at 320px width. Verify layout doesn't overflow, \
+            focus order is top-to-bottom, and keyboard submit works."
 ```
 
 Target many tasks or items via repeated `--task` / `--item` — the

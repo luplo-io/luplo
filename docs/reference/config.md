@@ -27,8 +27,8 @@ db_url    = "postgresql://localhost/luplo"
 server_url = "https://luplo.example.com"       # only for remote
 
 [project]
-id   = "hearthward"
-name = "Hearthward"
+id   = "myapp"
+name = "MyApp"
 
 [actor]
 id    = "<uuid4>"

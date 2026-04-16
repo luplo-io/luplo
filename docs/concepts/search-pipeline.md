@@ -19,7 +19,7 @@ that tsquery already found. If retrieval finds nothing, the answer is
          ▼
 ┌───────────────────┐
 │ 2. Glossary       │   normalise → strict alias expansion:
-│    expansion      │   "vendor" → (vendor | shop | NPC merchant)
+│    expansion      │   "auth" → (auth | authentication | sign-in)
 └────────┬──────────┘
          ▼
 ┌───────────────────┐
@@ -45,16 +45,16 @@ system filter so that "auth" queries do not drag in items from the
 
 ### 2. Glossary expansion
 
-The glossary is the mechanism that lets `"vendor"` find items indexed
-under `"shop"` or `"NPC merchant"` without requiring the caller to know
-every alias. The pipeline is **strict-first**, with three layers:
+The glossary is the mechanism that lets `"auth"` find items indexed
+under `"authentication"` or `"sign-in"` without requiring the caller to
+know every alias. The pipeline is **strict-first**, with three layers:
 
 1. **Deterministic normalization.** Lowercase, whitespace collapse,
    Korean morpheme splitting. Zero false positives — this step is
    purely mechanical.
-2. **Strict LLM matching.** Only translation-grade synonyms ("shop"
-   ↔ "store") make it into a glossary group. The prompt is tuned so
-   that **NONE** is a better answer than a wrong grouping.
+2. **Strict LLM matching.** Only translation-grade synonyms
+   (`sign-in` ↔ `login`) make it into a glossary group. The prompt is
+   tuned so that **NONE** is a better answer than a wrong grouping.
 3. **Human curation queue.** Candidates the LLM is unsure about go into
    `glossary_terms` with `status='pending'`, visible via
    `lp glossary pending` and `luplo_page_sync`.
@@ -63,8 +63,8 @@ The query is rewritten into a tsquery expression that ORs the aliases
 within each matched group:
 
 ```text
-"vendor budget"
-  → (vendor | shop | "NPC merchant") & (budget | gold-pool | current_budget)
+"auth rate limit"
+  → (auth | authentication | sign-in) & ("rate limit" | throttle | quota)
 ```
 
 Every alias that fires is recorded with the result, so downstream
@@ -75,14 +75,15 @@ tooling can show **why** a match was returned.
 The LLM flags terms as `is_protected=true` whenever they look like
 identifiers that must never be pulled into a synonym cluster:
 
-- Upper-case acronyms (`HTK`, `API`, `RPC`)
+- Upper-case acronyms (`JWT`, `API`, `OTP`, `TLS`, `RPC`)
 - Programming identifiers (`snake_case`, `camelCase`)
-- Proper nouns not in the general dictionary (`Pyromancy`, `Nakama`)
+- Proper nouns not in the general dictionary — project codenames like
+  `Prometheus`, `Sentinel`, `Gatekeeper`
 
 Protected terms participate in exact match and deterministic
 normalization, but the strict LLM step refuses to cluster them with
-anything else. This is the guardrail that keeps `HTK` from becoming
-an alias of `height`.
+anything else. This is the guardrail that keeps `OTP` from becoming an
+alias of `opt` or `Sentinel` from being merged with `guard`.
 
 ### 3. tsquery retrieval
 
@@ -140,7 +141,7 @@ retrieval always has a defensible reason to show you what it showed.
   `glossary_rejections` and never be suggested again.
 - **Need closer-to-semantic ranking?** Install `vector-local`. Existing
   writes will rerank from the next worker pass onward.
-- **Want to restrict to a system?** `lp items search "foo" --system auth`
+- **Want to restrict to a system?** `lp items search "jwt" --system auth`
   (CLI) or `system_ids=['<uuid>']` (MCP).
 
 ## Next

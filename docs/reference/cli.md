@@ -19,7 +19,7 @@ Alembic migrations, seeds the project and actor. Idempotent.
 
 | Flag | Description |
 |---|---|
-| `-p`, `--project` *(required)* | Project ID (e.g. `hearthward`). |
+| `-p`, `--project` *(required)* | Project ID (e.g. `myapp`). |
 | `-e`, `--email` *(required)* | Your email — primary identifier since v0.5.1. |
 | `--project-name` | Human-readable project name (defaults to project ID). |
 | `--name` | Display name (defaults to email local-part). |

@@ -23,7 +23,7 @@ the human asks for context.
 
 ```json
 {
-  "project_id": "hearthward",
+  "project_id": "myapp",
   "system_id": "",
   "keyword": ""
 }
@@ -40,8 +40,8 @@ Glossary-expanded tsquery search.
 
 ```json
 {
-  "query": "vendor budget",
-  "project_id": "hearthward",
+  "query": "auth rate limit",
+  "project_id": "myapp",
   "item_types": ["decision"],
   "system_ids": ["<uuid>"],
   "limit": 10
@@ -74,7 +74,7 @@ Query the `items_history` table for semantic changes.
 
 ```json
 {
-  "project_id": "hearthward",
+  "project_id": "myapp",
   "item_id": "<uuid>",
   "since": "2026-04-10T00:00:00Z",
   "semantic_impacts": ["numeric_change", "rule_addition"],
@@ -153,7 +153,7 @@ Multi-target via `target_task_ids` / `target_item_ids` arrays.
 
 ```json
 {
-  "project_id": "hearthward",
+  "project_id": "myapp",
   "task_id":    "",
   "item_id":    "",
   "work_unit_id": ""
