@@ -44,6 +44,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
     "pyright>=1.1",
+    "types-jsonschema>=4.23",
+    "types-authlib>=1.3",
 ]
 
 [project.scripts]
@@ -75,6 +77,23 @@ select = [
     "TCH", # flake8-type-checking
     "RUF", # ruff-specific
 ]
+ignore = [
+    # typer / FastAPI / Pydantic rely on runtime type introspection via
+    # get_type_hints(); moving annotation-only imports into TYPE_CHECKING
+    # blocks breaks Depends/Option/Query resolution at call time.
+    "TC001",
+    "TC002",
+    "TC003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# typer.Option / typer.Argument / FastAPI Depends / Query are the
+# idiomatic way to declare CLI / HTTP parameters — flake8-bugbear's
+# B008 does not understand framework defaults.
+"src/luplo/cli.py" = ["B008"]
+"src/luplo/server/**/*.py" = ["B008"]
+# Alembic migration SQL strings are intentionally inline.
+"db/migrations/*.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["luplo"]
@@ -85,6 +104,10 @@ known-first-party = ["luplo"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 include = ["src"]
+# Optional extras that ship their own heavyweight deps (torch, pgvector).
+# Type-checking these would force CI to install the full vector stack.
+exclude = ["src/luplo/core/embedding/local.py"]
+reportUnnecessaryTypeIgnoreComment = "error"
 
 # ── Pytest ───────────────────────────────────────────────────────
 

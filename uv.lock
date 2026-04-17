@@ -659,6 +659,8 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "types-authlib" },
+    { name = "types-jsonschema" },
 ]
 server = [
     { name = "argon2-cffi" },
@@ -699,6 +701,8 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'vector-local'", specifier = ">=3.4" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "typer", specifier = ">=0.15" },
+    { name = "types-authlib", marker = "extra == 'dev'", specifier = ">=1.3" },
+    { name = "types-jsonschema", marker = "extra == 'dev'", specifier = ">=4.23" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.34" },
 ]
 provides-extras = ["server", "vector-local", "dev"]
@@ -2055,6 +2059,30 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f5/24/cb09efec5cc954f7f9b930bf8279447d24618bb6758d4f6adf2574c41780/typer-0.24.1.tar.gz", hash = "sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45", size = 118613, upload-time = "2026-02-21T16:54:40.609Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/91/48db081e7a63bb37284f9fbcefda7c44c277b18b0e13fbc36ea2335b71e6/typer-0.24.1-py3-none-any.whl", hash = "sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e", size = 56085, upload-time = "2026-02-21T16:54:41.616Z" },
+]
+
+[[package]]
+name = "types-authlib"
+version = "1.6.10.20260414"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/40/84/05ebd66b75660e69257197b293d3b7e03ad9fcdcea8a030e83fece078435/types_authlib-1.6.10.20260414.tar.gz", hash = "sha256:cc4507efc6a27a3402beb29d91e23b375bf255ad71cb95b0e56689926719cf63", size = 46802, upload-time = "2026-04-14T04:35:37.686Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/6e/32221892cf6a2c85158ff314576fed9f943cdb31566585de66960e0ea009/types_authlib-1.6.10.20260414-py3-none-any.whl", hash = "sha256:86f86381d93fa81699cf9b5d57e351a60517237d3661788ddb90cdde3dd1db1e", size = 103945, upload-time = "2026-04-14T04:35:36.62Z" },
+]
+
+[[package]]
+name = "types-jsonschema"
+version = "4.26.0.20260408"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "referencing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/4c/2ef5483ef81e7b6e1b901eb2994fd280cb19860134a20ff99e72748f3ccb/types_jsonschema-4.26.0.20260408.tar.gz", hash = "sha256:82b75a976ed1507c473b8dee2d4841bd65926758c6d672bb93d08bf5e16f1b3f", size = 16553, upload-time = "2026-04-08T04:36:00.543Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/3c/724ad6ecaea06e8c6c8a8c9949a0979e6a2149b8aec4fe160135c64dd5ac/types_jsonschema-4.26.0.20260408-py3-none-any.whl", hash = "sha256:1ab0058c2612b0b81fc4e3c88ec3f9ad9b0af3fd31a176030d78b6d6cefb6e7b", size = 16081, upload-time = "2026-04-08T04:35:59.678Z" },
 ]
 
 [[package]]
