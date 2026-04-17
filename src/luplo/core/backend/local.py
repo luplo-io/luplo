@@ -18,7 +18,6 @@ from luplo.core import (
     audit,
     glossary,
     history,
-    item_types as _item_types_mod,
     items,
     links,
     projects,
@@ -26,6 +25,9 @@ from luplo.core import (
     systems,
     tasks,
     work_units,
+)
+from luplo.core import (
+    item_types as _item_types_mod,
 )
 from luplo.core.embedding import EmbeddingBackend, NullEmbedding
 from luplo.core.models import (
@@ -47,8 +49,14 @@ from luplo.core.models import (
 from luplo.core.search import search as search_fn
 from luplo.core.sync.queue import (
     complete_sync_job as _complete_sync,
+)
+from luplo.core.sync.queue import (
     enqueue_sync as _enqueue_sync,
+)
+from luplo.core.sync.queue import (
     fail_sync_job as _fail_sync,
+)
+from luplo.core.sync.queue import (
     get_ready_sync_jobs as _get_ready,
 )
 

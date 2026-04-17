@@ -12,8 +12,8 @@ Set ``LUPLO_AUTH_DISABLED=1`` for solo dogfooding (dev only).
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             email=settings.admin_email,
             password=settings.admin_password_initial,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Don't block startup on seed failure — log-equivalent print.
         print(f"[luplo] warning: admin seed skipped: {e}")
 
@@ -72,11 +72,6 @@ _session_secret = os.environ.get("LUPLO_SESSION_SECRET") or os.environ.get(
     "LUPLO_JWT_SECRET", "dev-session-secret-do-not-use-in-prod"
 )
 app.add_middleware(SessionMiddleware, secret_key=_session_secret)
-
-
-def _get_backend(app: FastAPI) -> LocalBackend:
-    """Extract the backend from app state."""
-    return app.state.backend  # type: ignore[no-any-return]
 
 
 # Register routers
@@ -99,4 +94,4 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-__all__ = ["app", "LuploServerSettings"]
+__all__ = ["LuploServerSettings", "app"]

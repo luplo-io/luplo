@@ -17,6 +17,7 @@ def _empty_str_list() -> list[str]:
 
 # ── Core 6 ───────────────────────────────────────────────────────
 
+
 @dataclass(slots=True)
 class Project:
     id: str
@@ -125,6 +126,7 @@ class Link:
 
 # ── Glossary 3 ───────────────────────────────────────────────────
 
+
 @dataclass(slots=True)
 class GlossaryGroup:
     id: str
@@ -164,6 +166,7 @@ class GlossaryRejection:
 
 
 # ── Sync 3 ───────────────────────────────────────────────────────
+
 
 @dataclass(slots=True)
 class HistoryEntry:
@@ -210,6 +213,7 @@ class SyncJob:
 
 # ── Input types ──────────────────────────────────────────────────
 
+
 @dataclass(slots=True)
 class ItemCreate:
     """Input for creating an item. id is auto-generated if omitted."""
@@ -242,6 +246,7 @@ class ItemCreate:
 
 
 # ── Result types ─────────────────────────────────────────────────
+
 
 @dataclass(slots=True)
 class SearchResult:

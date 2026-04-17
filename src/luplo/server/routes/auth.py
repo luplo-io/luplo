@@ -43,10 +43,10 @@ AUTH_COOKIE = "luplo_token"
 
 
 def _settings(request: Request) -> LuploServerSettings:
-    return request.app.state.settings  # type: ignore[no-any-return]
+    return request.app.state.settings
 
 
-def _pool(request: Request):  # type: ignore[no-untyped-def]
+def _pool(request: Request):
     return request.app.state.pool
 
 
@@ -93,7 +93,11 @@ async def login_submit(
     token = _issue_for(actor.id, actor.email, actor.is_admin, settings)
     resp = JSONResponse({"token": token, "email": actor.email})
     resp.set_cookie(
-        AUTH_COOKIE, token, httponly=True, secure=False, samesite="lax",
+        AUTH_COOKIE,
+        token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
         max_age=settings.jwt_ttl_minutes * 60,
     )
     return resp
@@ -107,7 +111,7 @@ async def oauth_start(request: Request, provider: str) -> RedirectResponse:
         raise HTTPException(status_code=404, detail=f"Provider '{provider}' not configured")
     settings = _settings(request)
     redirect_uri = f"{settings.base_url.rstrip('/')}/auth/oauth/{provider}/callback"
-    return await client.authorize_redirect(request, redirect_uri)  # type: ignore[no-any-return]
+    return await client.authorize_redirect(request, redirect_uri)
 
 
 @router.get("/oauth/{provider}/callback")
@@ -157,7 +161,11 @@ async def oauth_callback(request: Request, provider: str) -> JSONResponse:
     jwt_token = _issue_for(actor.id, actor.email, actor.is_admin, settings)
     resp = JSONResponse({"token": jwt_token, "email": actor.email})
     resp.set_cookie(
-        AUTH_COOKIE, jwt_token, httponly=True, secure=False, samesite="lax",
+        AUTH_COOKIE,
+        jwt_token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
         max_age=settings.jwt_ttl_minutes * 60,
     )
     return resp

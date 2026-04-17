@@ -21,15 +21,13 @@ from __future__ import annotations
 
 import os
 import uuid
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
-from typing import AsyncIterator
+from datetime import UTC, datetime, timedelta
 
 from mcp.server.fastmcp import FastMCP
 
 from luplo.config import load_config
 from luplo.core.backend.local import LocalBackend
-from luplo.core.db import close_pool, create_pool
+from luplo.core.db import create_pool
 from luplo.core.models import Item, ItemCreate
 
 mcp = FastMCP(
@@ -108,7 +106,7 @@ _backend: LocalBackend | None = None
 
 async def _get_backend() -> LocalBackend:
     """Lazy-initialise the backend on first tool call."""
-    global _backend  # noqa: PLW0603
+    global _backend
     if _backend is None:
         db_url = os.environ.get("LUPLO_DB_URL", "postgresql://localhost/luplo")
         pool = await create_pool(db_url)
@@ -129,9 +127,7 @@ def _resolve_actor(actor_id: str) -> str:
     cfg = load_config()
     if cfg.actor_id:
         return cfg.actor_id
-    raise ValueError(
-        "No actor_id configured. Set LUPLO_ACTOR_ID or run `lp init`."
-    )
+    raise ValueError("No actor_id configured. Set LUPLO_ACTOR_ID or run `lp init`.")
 
 
 # ── Work Units ───────────────────────────────────────────────────
@@ -196,9 +192,7 @@ async def luplo_work_resume(query: str, project_id: str) -> str:
         in_progress = await b.get_in_progress_task(wu.id)
         proposed = await b.list_tasks(wu.id, status="proposed")
         if in_progress is not None:
-            lines.append(
-                f"- in_progress: [{in_progress.id[:8]}] {in_progress.title}"
-            )
+            lines.append(f"- in_progress: [{in_progress.id[:8]}] {in_progress.title}")
         if proposed:
             lines.append("- pending tasks:")
             for t in proposed:
@@ -282,27 +276,27 @@ async def luplo_item_upsert(
     if expires_at:
         expires_dt = datetime.fromisoformat(expires_at)
         if expires_dt.tzinfo is None:
-            expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+            expires_dt = expires_dt.replace(tzinfo=UTC)
     elif item_type == "research":
         cfg = load_config()
-        expires_dt = datetime.now(timezone.utc) + timedelta(
-            days=cfg.research_ttl_days
-        )
+        expires_dt = datetime.now(UTC) + timedelta(days=cfg.research_ttl_days)
 
-    item = await b.create_item(ItemCreate(
-        project_id=project_id,
-        actor_id=_resolve_actor(actor_id),
-        item_type=item_type,
-        title=title,
-        body=body or None,
-        rationale=rationale or None,
-        system_ids=system_ids or [],
-        tags=tags or [],
-        work_unit_id=work_unit_id or None,
-        supersedes_id=supersedes_id or None,
-        source_url=source_url or None,
-        expires_at=expires_dt,
-    ))
+    item = await b.create_item(
+        ItemCreate(
+            project_id=project_id,
+            actor_id=_resolve_actor(actor_id),
+            item_type=item_type,
+            title=title,
+            body=body or None,
+            rationale=rationale or None,
+            system_ids=system_ids or [],
+            tags=tags or [],
+            work_unit_id=work_unit_id or None,
+            supersedes_id=supersedes_id or None,
+            source_url=source_url or None,
+            expires_at=expires_dt,
+        )
+    )
     action = "Updated" if supersedes_id else "Created"
     return f"{action} {item.item_type}: {item.title} (id: {item.id})"
 
@@ -329,8 +323,11 @@ async def luplo_item_search(
     """
     b = await _get_backend()
     results = await b.search(
-        query, project_id,
-        item_types=item_types, system_ids=system_ids, limit=limit,
+        query,
+        project_id,
+        item_types=item_types,
+        system_ids=system_ids,
+        limit=limit,
     )
 
     if not results:
@@ -383,7 +380,9 @@ async def luplo_brief(
 
     # Recent items
     if keyword:
-        results = await b.search(keyword, project_id, system_ids=[system_id] if system_id else None, limit=10)
+        results = await b.search(
+            keyword, project_id, system_ids=[system_id] if system_id else None, limit=10
+        )
         items = [r.item for r in results]
         lines.append(f"## Items matching '{keyword}'")
     else:
@@ -470,7 +469,9 @@ async def luplo_task_done(
     """Transition a task to 'done'."""
     b = await _get_backend()
     t = await b.complete_task(
-        task_id, actor_id=_resolve_actor(actor_id), summary=summary or None,
+        task_id,
+        actor_id=_resolve_actor(actor_id),
+        summary=summary or None,
     )
     return f"Completed task: {t.title} (new id: {t.id})"
 
@@ -484,11 +485,12 @@ async def luplo_task_block(
     """Transition a task to 'blocked'. Auto-creates a decision item."""
     b = await _get_backend()
     t = await b.block_task(
-        task_id, actor_id=_resolve_actor(actor_id), reason=reason,
+        task_id,
+        actor_id=_resolve_actor(actor_id),
+        reason=reason,
     )
     return (
-        f"Blocked task: {t.title} (new id: {t.id}). "
-        "Auto-created a decision item with the reason."
+        f"Blocked task: {t.title} (new id: {t.id}). Auto-created a decision item with the reason."
     )
 
 
@@ -530,7 +532,9 @@ async def luplo_qa_pass(
     """Transition a qa_check to 'passed' with optional evidence."""
     b = await _get_backend()
     q = await b.pass_qa(
-        qa_id, actor_id=_resolve_actor(actor_id), evidence=evidence or None,
+        qa_id,
+        actor_id=_resolve_actor(actor_id),
+        evidence=evidence or None,
     )
     return f"Passed qa_check: {q.title} (new id: {q.id})"
 
@@ -624,10 +628,10 @@ async def luplo_history_query(
         semantic_impacts: Filter by impact types (e.g. ["numeric_change", "rule_addition"]).
         limit: Maximum entries.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     b = await _get_backend()
-    since_dt = datetime.fromisoformat(since).replace(tzinfo=timezone.utc) if since else None
+    since_dt = datetime.fromisoformat(since).replace(tzinfo=UTC) if since else None
 
     entries = await b.query_history(
         project_id=project_id,

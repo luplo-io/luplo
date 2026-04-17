@@ -13,7 +13,6 @@ from typing import Any, Protocol
 
 from luplo.core.models import (
     Actor,
-    AuditEntry,
     GlossaryGroup,
     GlossaryRejection,
     GlossaryTerm,

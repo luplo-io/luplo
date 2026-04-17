@@ -97,9 +97,7 @@ def load_config() -> LuploConfig:
         cfg.actor_email = actor.get("email", cfg.actor_email)
 
         research = data.get("research", {})
-        cfg.research_ttl_days = int(
-            research.get("ttl_days", cfg.research_ttl_days)
-        )
+        cfg.research_ttl_days = int(research.get("ttl_days", cfg.research_ttl_days))
 
     # Layer 2: env vars override
     cfg.db_url = os.environ.get("LUPLO_DB_URL", cfg.db_url)

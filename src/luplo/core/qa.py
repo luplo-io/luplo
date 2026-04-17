@@ -23,7 +23,7 @@ from luplo.core.errors import (
     QAStateTransitionError,
 )
 from luplo.core.id_resolve import build_seed_clause
-from luplo.core.items import row_to_item, create_item
+from luplo.core.items import create_item, row_to_item
 from luplo.core.models import Item, ItemCreate
 
 ITEM_TYPE = "qa_check"

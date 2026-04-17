@@ -74,15 +74,12 @@ async def search(
         return []
 
     # Step 3: Optional vector rerank
-    use_vectors = (
-        embedding_backend is not None
-        and not isinstance(embedding_backend, NullEmbedding)
+    use_vectors = embedding_backend is not None and not isinstance(
+        embedding_backend, NullEmbedding
     )
 
     if use_vectors and embedding_backend is not None:
-        candidates = await _vector_rerank(
-            conn, query, candidates, embedding_backend, limit
-        )
+        candidates = await _vector_rerank(conn, query, candidates, embedding_backend, limit)
     else:
         candidates = candidates[:limit]
 
@@ -159,8 +156,7 @@ async def _vector_rerank(
     item_ids = [c.item.id for c in candidates]
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "SELECT id, embedding FROM items"
-            " WHERE id = ANY(%(ids)s) AND embedding IS NOT NULL",
+            "SELECT id, embedding FROM items WHERE id = ANY(%(ids)s) AND embedding IS NOT NULL",
             {"ids": item_ids},
         )
         embeddings: dict[str, list[float]] = {}
@@ -184,8 +180,7 @@ async def _vector_rerank(
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [
-        SearchResult(item=s.item, score=score, snippet=s.snippet)
-        for score, s in scored[:limit]
+        SearchResult(item=s.item, score=score, snippet=s.snippet) for score, s in scored[:limit]
     ]
 
 

@@ -25,6 +25,8 @@ from jsonschema import Draft7Validator
 from jsonschema import validate as _jsonschema_validate
 from jsonschema.exceptions import (
     SchemaError as _JSONSchemaSchemaError,
+)
+from jsonschema.exceptions import (
     ValidationError as _JSONSchemaError,
 )
 from psycopg import AsyncConnection, sql
@@ -65,9 +67,7 @@ def _row_to_item_type(row: dict[str, Any]) -> ItemType:
 async def _load_schema(conn: AsyncConnection[Any], key: str) -> dict[str, Any] | None:
     """Fetch a schema from the DB without using the cache."""
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(
-            "SELECT schema FROM item_types WHERE key = %s", (key,)
-        )
+        await cur.execute("SELECT schema FROM item_types WHERE key = %s", (key,))
         row = await cur.fetchone()
     if not row:
         return None
@@ -77,9 +77,7 @@ async def _load_schema(conn: AsyncConnection[Any], key: str) -> dict[str, Any] |
     return cast("dict[str, Any]", schema)
 
 
-async def _get_cached_schema(
-    conn: AsyncConnection[Any], key: str
-) -> dict[str, Any] | None:
+async def _get_cached_schema(conn: AsyncConnection[Any], key: str) -> dict[str, Any] | None:
     """Return the cached schema for *key*, refreshing if stale or missing."""
     cached = _CACHE.get(key)
     now = time.monotonic()
@@ -103,13 +101,9 @@ def invalidate_cache(key: str | None = None) -> None:
 # ── Public API ───────────────────────────────────────────────────
 
 
-async def get_item_type(
-    conn: AsyncConnection[Any], key: str
-) -> ItemType | None:
+async def get_item_type(conn: AsyncConnection[Any], key: str) -> ItemType | None:
     """Fetch a registry entry by key. Returns ``None`` if not found."""
-    query = sql.SQL("SELECT {cols} FROM item_types WHERE key = %s").format(
-        cols=_RETURNING
-    )
+    query = sql.SQL("SELECT {cols} FROM item_types WHERE key = %s").format(cols=_RETURNING)
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, (key,))
         row = await cur.fetchone()
@@ -118,9 +112,7 @@ async def get_item_type(
 
 async def list_item_types(conn: AsyncConnection[Any]) -> list[ItemType]:
     """Return all registry entries, ordered by key."""
-    query = sql.SQL("SELECT {cols} FROM item_types ORDER BY key").format(
-        cols=_RETURNING
-    )
+    query = sql.SQL("SELECT {cols} FROM item_types ORDER BY key").format(cols=_RETURNING)
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query)
         rows = await cur.fetchall()
@@ -155,9 +147,7 @@ async def create_item_type(
         " RETURNING {cols}"
     ).format(cols=_RETURNING)
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(
-            query, (key, display_name, Jsonb(schema), owner)
-        )
+        await cur.execute(query, (key, display_name, Jsonb(schema), owner))
         row = await cur.fetchone()
     assert row is not None
     invalidate_cache(key)
@@ -184,6 +174,4 @@ async def validate_context(
         # Build a path-aware message: "context.status: 'foo' is not one of ..."
         path = ".".join(str(p) for p in e.absolute_path)
         prefix = f"context.{path}" if path else "context"
-        raise ContextValidationError(
-            item_type, f"{prefix}: {e.message}"
-        ) from e
+        raise ContextValidationError(item_type, f"{prefix}: {e.message}") from e

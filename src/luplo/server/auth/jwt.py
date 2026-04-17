@@ -49,16 +49,14 @@ def issue_token(
     return pyjwt.encode(claims, secret, algorithm=alg)
 
 
-def decode_token(
-    token: str, *, secret: str, alg: str = "HS256"
-) -> dict[str, Any]:
+def decode_token(token: str, *, secret: str, alg: str = "HS256") -> dict[str, Any]:
     """Decode and verify a JWT.
 
     Raises:
         TokenError: If the token is invalid, expired, or has missing claims.
     """
     try:
-        return pyjwt.decode(  # type: ignore[no-any-return]
+        return pyjwt.decode(
             token,
             secret,
             algorithms=[alg],

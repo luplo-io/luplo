@@ -48,9 +48,7 @@ async def run_worker(pool: AsyncConnectionPool) -> None:
     conninfo = pool.conninfo
     if not isinstance(conninfo, str):
         raise TypeError("Worker requires a connection pool built from a str URL")
-    listen_conn: AsyncConnection[Any] = await AsyncConnection.connect(
-        conninfo, autocommit=True
-    )
+    listen_conn: AsyncConnection[Any] = await AsyncConnection.connect(conninfo, autocommit=True)
 
     try:
         await listen_conn.execute("LISTEN luplo_sync_jobs")
@@ -88,9 +86,7 @@ async def _process_ready_jobs(pool: AsyncConnectionPool) -> None:
             await _process_one_job(pool, job.id, job.payload)
 
 
-async def _process_one_job(
-    pool: AsyncConnectionPool, job_id: int, payload: str | None
-) -> None:
+async def _process_one_job(pool: AsyncConnectionPool, job_id: int, payload: str | None) -> None:
     """Process a single sync job.
 
     v0.5: logs the job and marks it complete.  Actual Notion/Confluence

@@ -21,12 +21,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 SERVER_TOML_FILENAME = "luplo-server.toml"
 
 # Fields that may only be set via environment variables (never from TOML).
-_ENV_ONLY_FIELDS: frozenset[str] = frozenset({
-    "jwt_secret",
-    "admin_password_initial",
-    "github_client_secret",
-    "google_client_secret",
-})
+_ENV_ONLY_FIELDS: frozenset[str] = frozenset(
+    {
+        "jwt_secret",
+        "admin_password_initial",
+        "github_client_secret",
+        "google_client_secret",
+    }
+)
 
 
 class LuploServerSettings(BaseSettings):

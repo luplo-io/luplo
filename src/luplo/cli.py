@@ -10,12 +10,11 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
-import sys
 import uuid
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 import typer
@@ -183,17 +182,17 @@ def init(
         "-e",
         help="Your email (required — primary identifier after v0.5.1).",
     ),
-    project_name: Optional[str] = typer.Option(
+    project_name: str | None = typer.Option(
         None,
         "--project-name",
         help="Human-readable project name. Defaults to project ID.",
     ),
-    actor_name: Optional[str] = typer.Option(
+    actor_name: str | None = typer.Option(
         None,
         "--name",
         help="Your display name. Defaults to the local-part of email.",
     ),
-    actor_id: Optional[str] = typer.Option(
+    actor_id: str | None = typer.Option(
         None,
         "--actor-id",
         help="Explicit actor UUID. Auto-generated (uuid4) if omitted.",
@@ -299,9 +298,9 @@ def init(
 
     typer.echo("")
     typer.echo("Done! Try:")
-    typer.echo(f'  lp items add "Your first decision"')
-    typer.echo(f"  lp items list")
-    typer.echo(f"  lp brief")
+    typer.echo('  lp items add "Your first decision"')
+    typer.echo("  lp items list")
+    typer.echo("  lp brief")
 
 
 # ── Items ────────────────────────────────────────────────────────
@@ -311,11 +310,11 @@ def init(
 def items_add(
     title: str = typer.Argument(..., help="Item title."),
     item_type: str = typer.Option("decision", "--type", "-t", help="Item type."),
-    body: Optional[str] = typer.Option(None, "--body", "-b", help="Item body."),
-    rationale: Optional[str] = typer.Option(None, "--rationale", "-r"),
-    system: Optional[list[str]] = typer.Option(None, "--system", "-s"),
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    body: str | None = typer.Option(None, "--body", "-b", help="Item body."),
+    rationale: str | None = typer.Option(None, "--rationale", "-r"),
+    system: list[str] | None = typer.Option(None, "--system", "-s"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Add a new item."""
     pid = _cfg_project(project)
@@ -371,9 +370,9 @@ def items_show(
 
 @items_app.command("list")
 def items_list(
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
-    item_type: Optional[str] = typer.Option(None, "--type", "-t"),
-    system: Optional[str] = typer.Option(None, "--system", "-s"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    item_type: str | None = typer.Option(None, "--type", "-t"),
+    system: str | None = typer.Option(None, "--system", "-s"),
     limit: int = typer.Option(20, "--limit", "-n"),
 ) -> None:
     """List items for a project."""
@@ -400,7 +399,7 @@ def items_list(
 @items_app.command("search")
 def items_search(
     query: str = typer.Argument(..., help="Search query."),
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
     limit: int = typer.Option(10, "--limit", "-n"),
 ) -> None:
     """Search items using glossary-expanded tsquery."""
@@ -427,10 +426,10 @@ def items_search(
 @work_app.command("open")
 def work_open(
     title: str = typer.Argument(..., help="Work unit title."),
-    description: Optional[str] = typer.Option(None, "--desc", "-d"),
-    system: Optional[list[str]] = typer.Option(None, "--system", "-s"),
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    description: str | None = typer.Option(None, "--desc", "-d"),
+    system: list[str] | None = typer.Option(None, "--system", "-s"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Open a new work unit."""
     import uuid
@@ -456,7 +455,7 @@ def work_open(
 @work_app.command("resume")
 def work_resume(
     query: str = typer.Argument(..., help="Title keyword to search."),
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
     """Find in-progress work units by title."""
     from luplo.core.work_units import find_work_units
@@ -484,7 +483,7 @@ def work_close(
     force: bool = typer.Option(
         False, "--force", "-f", help="Close even if an in_progress task remains."
     ),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Close a work unit. Refuses if an in_progress task remains (use --force)."""
     aid = _cfg_actor(actor)
@@ -512,9 +511,9 @@ def work_close(
 @systems_app.command("add")
 def systems_add(
     name: str = typer.Argument(..., help="System name."),
-    description: Optional[str] = typer.Option(None, "--desc", "-d"),
-    depends: Optional[list[str]] = typer.Option(None, "--depends"),
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    description: str | None = typer.Option(None, "--desc", "-d"),
+    depends: list[str] | None = typer.Option(None, "--depends"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
     """Add a new system."""
     import uuid
@@ -537,7 +536,7 @@ def systems_add(
 
 @systems_app.command("list")
 def systems_list(
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
     """List all systems for a project."""
     pid = _cfg_project(project)
@@ -562,7 +561,7 @@ def systems_list(
 
 @glossary_app.command("ls")
 def glossary_ls(
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
     limit: int = typer.Option(50, "--limit", "-n"),
 ) -> None:
     """List glossary groups."""
@@ -583,7 +582,7 @@ def glossary_ls(
 
 @glossary_app.command("pending")
 def glossary_pending(
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
     limit: int = typer.Option(20, "--limit", "-n"),
 ) -> None:
     """Show terms awaiting curation."""
@@ -609,7 +608,7 @@ def glossary_approve(
     term_id: str = typer.Argument(..., help="Term ID to approve."),
     group_id: str = typer.Option(..., "--group", "-g", help="Target group ID."),
     canonical: bool = typer.Option(False, "--canonical", "-c", help="Set as canonical."),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Approve a pending term into a group."""
     aid = _cfg_actor(actor)
@@ -633,8 +632,8 @@ def glossary_approve(
 @glossary_app.command("reject")
 def glossary_reject(
     term_id: str = typer.Argument(..., help="Term ID to reject."),
-    reason: Optional[str] = typer.Option(None, "--reason", "-r"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    reason: str | None = typer.Option(None, "--reason", "-r"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Reject a term permanently."""
     aid = _cfg_actor(actor)
@@ -655,8 +654,8 @@ def glossary_reject(
 
 @app.command("brief")
 def brief(
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
-    system: Optional[str] = typer.Option(None, "--system", "-s"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    system: str | None = typer.Option(None, "--system", "-s"),
 ) -> None:
     """Get a project brief — active work + recent decisions."""
     pid = _cfg_project(project)
@@ -729,11 +728,11 @@ def task_add(
         "-w",
         help="Work unit full UUID or 8-char+ hex prefix.",
     ),
-    body: Optional[str] = typer.Option(None, "--body", "-b"),
-    system: Optional[list[str]] = typer.Option(None, "--system", "-s"),
-    sort_order: Optional[int] = typer.Option(None, "--sort"),
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    body: str | None = typer.Option(None, "--body", "-b"),
+    system: list[str] | None = typer.Option(None, "--system", "-s"),
+    sort_order: int | None = typer.Option(None, "--sort"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Add a new task in 'proposed' status."""
     pid = _cfg_project(project)
@@ -758,7 +757,7 @@ def task_add(
 @task_app.command("ls")
 def task_ls(
     work_unit: str = typer.Option(..., "--wu", "-w"),
-    status: Optional[str] = typer.Option(None, "--status", "-s"),
+    status: str | None = typer.Option(None, "--status", "-s"),
 ) -> None:
     """List tasks (chain heads) for a work unit, ordered by sort_order."""
 
@@ -801,7 +800,7 @@ def task_show(
 @task_app.command("start")
 def task_start(
     task_id: str = typer.Argument(...),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Transition task to 'in_progress' (enforces 1 in_progress per WU)."""
     aid = _cfg_actor(actor)
@@ -822,8 +821,8 @@ def task_start(
 @task_app.command("done")
 def task_done(
     task_id: str = typer.Argument(...),
-    summary: Optional[str] = typer.Option(None, "--summary"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    summary: str | None = typer.Option(None, "--summary"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Transition task to 'done'."""
     aid = _cfg_actor(actor)
@@ -840,7 +839,7 @@ def task_done(
 def task_blocked(
     task_id: str = typer.Argument(...),
     reason: str = typer.Option(..., "--reason", "-r"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Transition task to 'blocked' (auto-creates a decision item)."""
     aid = _cfg_actor(actor)
@@ -857,8 +856,8 @@ def task_blocked(
 @task_app.command("skip")
 def task_skip(
     task_id: str = typer.Argument(...),
-    reason: Optional[str] = typer.Option(None, "--reason", "-r"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    reason: str | None = typer.Option(None, "--reason", "-r"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Transition task to 'skipped' (terminal)."""
     aid = _cfg_actor(actor)
@@ -875,7 +874,7 @@ def task_skip(
 def task_reorder(
     work_unit: str = typer.Argument(..., help="Work unit ID."),
     task_ids: list[str] = typer.Argument(..., help="Task IDs in desired order."),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Reorder tasks (in-place sort_order update — P10)."""
     aid = _cfg_actor(actor)
@@ -921,19 +920,15 @@ def _print_qa(item: object) -> None:
 def qa_add(
     title: str = typer.Argument(...),
     coverage: str = typer.Option(..., "--coverage", "-c", help="auto_partial | human_only"),
-    area: Optional[list[str]] = typer.Option(
+    area: list[str] | None = typer.Option(
         None, "--area", help="vfx, sfx, ux, edge_case, perf, a11y, sec"
     ),
-    tasks_target: Optional[list[str]] = typer.Option(
-        None, "--task", "-t", help="Target task IDs."
-    ),
-    items_target: Optional[list[str]] = typer.Option(
-        None, "--item", "-i", help="Target item IDs."
-    ),
-    work_unit: Optional[str] = typer.Option(None, "--wu", "-w"),
-    body: Optional[str] = typer.Option(None, "--body"),
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    tasks_target: list[str] | None = typer.Option(None, "--task", "-t", help="Target task IDs."),
+    items_target: list[str] | None = typer.Option(None, "--item", "-i", help="Target item IDs."),
+    work_unit: str | None = typer.Option(None, "--wu", "-w"),
+    body: str | None = typer.Option(None, "--body"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Add a new qa_check in 'pending' status."""
     pid = _cfg_project(project)
@@ -959,13 +954,13 @@ def qa_add(
 
 @qa_app.command("ls")
 def qa_ls(
-    status: Optional[str] = typer.Option(None, "--status", "-s"),
-    work_unit: Optional[str] = typer.Option(None, "--wu", "-w"),
-    task: Optional[str] = typer.Option(
+    status: str | None = typer.Option(None, "--status", "-s"),
+    work_unit: str | None = typer.Option(None, "--wu", "-w"),
+    task: str | None = typer.Option(
         None, "--task", "-t", help="Filter to qa_checks targeting this task."
     ),
-    item_id_filter: Optional[str] = typer.Option(None, "--item", "-i"),
-    project: Optional[str] = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    item_id_filter: str | None = typer.Option(None, "--item", "-i"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
     """List qa_checks. With --task / --item shows pending qa for that target."""
     pid = _cfg_project(project)
@@ -1013,7 +1008,7 @@ def qa_show(
 @qa_app.command("start")
 def qa_start(
     qa_id: str = typer.Argument(...),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
 
@@ -1028,8 +1023,8 @@ def qa_start(
 @qa_app.command("pass")
 def qa_pass(
     qa_id: str = typer.Argument(...),
-    evidence: Optional[str] = typer.Option(None, "--evidence", "-e"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    evidence: str | None = typer.Option(None, "--evidence", "-e"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
 
@@ -1045,7 +1040,7 @@ def qa_pass(
 def qa_fail(
     qa_id: str = typer.Argument(...),
     reason: str = typer.Option(..., "--reason", "-r"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
 
@@ -1061,7 +1056,7 @@ def qa_fail(
 def qa_block(
     qa_id: str = typer.Argument(...),
     reason: str = typer.Option(..., "--reason", "-r"),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
 
@@ -1077,7 +1072,7 @@ def qa_block(
 def qa_assign(
     qa_id: str = typer.Argument(...),
     assignee: str = typer.Option(..., "--to", help="Assignee actor UUID."),
-    actor: Optional[str] = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
 
@@ -1094,15 +1089,15 @@ def qa_assign(
 
 @app.command("login")
 def login(
-    email: Optional[str] = typer.Option(None, "--email", "-e"),
-    password: Optional[str] = typer.Option(
+    email: str | None = typer.Option(None, "--email", "-e"),
+    password: str | None = typer.Option(
         None,
         "--password",
         "-P",
         help="If omitted, you'll be prompted.",
     ),
-    server: Optional[str] = typer.Option(None, "--server", help="Server URL."),
-    oauth: Optional[str] = typer.Option(
+    server: str | None = typer.Option(None, "--server", help="Server URL."),
+    oauth: str | None = typer.Option(
         None,
         "--oauth",
         help="OAuth provider (github|google). Not yet wired — use password login.",
@@ -1114,7 +1109,7 @@ def login(
     if oauth:
         typer.echo(
             "OAuth CLI login (loopback + PKCE) is not yet wired in v0.5.1. "
-            "Browse to {}/auth/login in a browser, or use password login.".format(server_url),
+            f"Browse to {server_url}/auth/login in a browser, or use password login.",
             err=True,
         )
         raise typer.Exit(2)
@@ -1149,7 +1144,7 @@ def login(
 
 
 @app.command("logout")
-def logout(server: Optional[str] = typer.Option(None, "--server")) -> None:
+def logout(server: str | None = typer.Option(None, "--server")) -> None:
     """Forget the stored JWT for *server*."""
     server_url = _cfg_server_url(server).rstrip("/")
     _delete_token(server_url)
@@ -1157,7 +1152,7 @@ def logout(server: Optional[str] = typer.Option(None, "--server")) -> None:
 
 
 @app.command("whoami")
-def whoami(server: Optional[str] = typer.Option(None, "--server")) -> None:
+def whoami(server: str | None = typer.Option(None, "--server")) -> None:
     """Show the authenticated actor for *server*."""
     server_url = _cfg_server_url(server).rstrip("/")
     token = _load_token(server_url)
@@ -1178,7 +1173,7 @@ def whoami(server: Optional[str] = typer.Option(None, "--server")) -> None:
 
 
 @auth_app.command("refresh")
-def token_refresh(server: Optional[str] = typer.Option(None, "--server")) -> None:
+def token_refresh(server: str | None = typer.Option(None, "--server")) -> None:
     """Request a fresh JWT using the current token."""
     server_url = _cfg_server_url(server).rstrip("/")
     token = _load_token(server_url)
@@ -1207,7 +1202,7 @@ def token_refresh(server: Optional[str] = typer.Option(None, "--server")) -> Non
 @admin_app.command("set-password")
 def admin_set_password(
     email: str = typer.Argument(..., help="Target actor email."),
-    password: Optional[str] = typer.Option(
+    password: str | None = typer.Option(
         None,
         "--password",
         "-P",
