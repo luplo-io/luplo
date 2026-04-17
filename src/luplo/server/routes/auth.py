@@ -29,9 +29,11 @@ from luplo.core.actors import (
 )
 from luplo.server.auth.deps import CurrentActor, get_current_actor
 from luplo.server.auth.domain_filter import is_allowed_domain
+from luplo.server.auth.email import email_sender_from_env
 from luplo.server.auth.jwt import issue_token
 from luplo.server.auth.oauth import fetch_github_email
 from luplo.server.auth.password import verify_password
+from luplo.server.auth.reset import confirm_reset, request_reset
 from luplo.server.config import LuploServerSettings
 
 router = APIRouter()
@@ -198,3 +200,48 @@ async def token_refresh(
         raise HTTPException(status_code=401, detail="Actor no longer exists")
     token = _issue_for(full.id, full.email, full.is_admin, settings)
     return JSONResponse({"token": token, "email": full.email})
+
+
+@router.post("/reset-request")
+async def reset_request(
+    request: Request,
+    email: Annotated[str, Form()],
+) -> JSONResponse:
+    """Start a password reset.
+
+    Returns 200 unconditionally — same shape whether *email* is
+    registered or not, so the endpoint cannot be used to enumerate
+    accounts. If the email exists, a reset link is emailed via the
+    configured :class:`~luplo.server.auth.email.EmailSender`.
+    """
+    settings = _settings(request)
+    pool = _pool(request)
+    sender = email_sender_from_env()
+    async with pool.connection() as conn:
+        await request_reset(
+            conn,
+            email=email,
+            sender=sender,
+            base_url=settings.base_url,
+        )
+    return JSONResponse({"ok": True})
+
+
+@router.post("/reset-confirm")
+async def reset_confirm(
+    request: Request,
+    token: Annotated[str, Form()],
+    new_password: Annotated[str, Form()],
+) -> JSONResponse:
+    """Complete a password reset.
+
+    Returns 200 on success. A single 400 "Invalid or expired token" on
+    every failure path — unknown token, expired token, already-used
+    token, or a new password that fails the strength check.
+    """
+    pool = _pool(request)
+    async with pool.connection() as conn:
+        ok = await confirm_reset(conn, token_plaintext=token, new_password=new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    return JSONResponse({"ok": True})
