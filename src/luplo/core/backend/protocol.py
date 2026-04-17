@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Protocol
 
+from luplo.core.checks import Finding
 from luplo.core.impact import ImpactResult
 from luplo.core.models import (
     Actor,
@@ -392,6 +393,17 @@ class Backend(Protocol):
         depth: int = 5,
     ) -> ImpactResult:
         """Traverse outgoing typed edges to find the item's blast radius."""
+        ...
+
+    # ── Checks ───────────────────────────────────────────────────
+
+    async def run_checks(
+        self,
+        project_id: str,
+        *,
+        rule_names: list[str] | None = None,
+    ) -> list[Finding]:
+        """Run the enabled rule pack against *project_id* and return findings."""
         ...
 
     # ── Search ───────────────────────────────────────────────────

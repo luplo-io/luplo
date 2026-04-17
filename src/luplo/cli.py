@@ -815,6 +815,89 @@ def impact_cmd(
     _run(_do())
 
 
+# ── Checks (rule pack) ───────────────────────────────────────────
+
+
+@app.command("check")
+def check_cmd(
+    rule: list[str] = typer.Option(
+        [],
+        "--rule",
+        "-r",
+        help="Run only these rules (by name). Repeat for multiple. Default: all enabled.",
+    ),
+    severity: str = typer.Option(
+        "warn",
+        "--severity",
+        "-s",
+        help="Show findings at or above this severity. One of: error, warn, info.",
+    ),
+    list_rules: bool = typer.Option(
+        False, "--list", help="Print every registered rule and its default severity, then exit."
+    ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+) -> None:
+    """Run the deterministic rule pack and report findings.
+
+    Exits non-zero if any finding has severity=error. Rules disabled in
+    ``.luplo [checks] disabled_rules`` are skipped regardless of
+    ``--rule``.
+
+    \b
+    Examples:
+        lp check
+        lp check --rule missing_rationale --rule dangling_edge
+        lp check --severity error
+        lp check --list
+    """
+    from luplo.core.checks import RULES
+    from luplo.core.errors import ValidationError
+
+    if list_rules:
+        for name, r in RULES.items():
+            typer.echo(f"  {name:<22} [{r.default_severity}] {r.description}")
+        return
+
+    severity_order = {"info": 0, "warn": 1, "error": 2}
+    if severity not in severity_order:
+        typer.echo(
+            f"Error: --severity must be one of: error, warn, info (got {severity!r})", err=True
+        )
+        raise typer.Exit(2)
+
+    pid = _cfg_project(project)
+    cfg = load_config()
+
+    async def _do() -> None:
+        async with _backend() as b:
+            try:
+                findings = await b.run_checks(
+                    pid,
+                    rule_names=rule or None,
+                    disabled=cfg.disabled_checks,
+                )
+            except ValidationError as exc:
+                typer.echo(f"Error: {exc.message}", err=True)
+                raise typer.Exit(2) from exc
+
+        threshold = severity_order[severity]
+        shown = [f for f in findings if severity_order[f.severity] >= threshold]
+
+        if not shown:
+            typer.echo(f"No findings at severity ≥ {severity}.")
+            return
+
+        typer.echo(f"{len(shown)} finding(s):")
+        for f in shown:
+            target = f" [{f.item_id[:8]}]" if f.item_id else ""
+            typer.echo(f"  [{f.severity:<5}] {f.rule_name}{target}  {f.message}")
+
+        if any(f.severity == "error" for f in findings):
+            raise typer.Exit(1)
+
+    _run(_do())
+
+
 # ── Worker ───────────────────────────────────────────────────────
 
 

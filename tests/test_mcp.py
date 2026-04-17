@@ -30,6 +30,7 @@ def test_mcp_tools_registered() -> None:
         "luplo_task_done",
         "luplo_task_block",
         "luplo_task_edit",
+        "luplo_check",
         # Phase E — qa
         "luplo_qa_add",
         "luplo_qa_pass",
@@ -42,4 +43,4 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 20
+    assert len(tools) == 21

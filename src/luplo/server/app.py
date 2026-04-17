@@ -76,6 +76,7 @@ app.add_middleware(SessionMiddleware, secret_key=_session_secret)
 
 # Register routers
 from luplo.server.routes.auth import router as auth_router  # noqa: E402
+from luplo.server.routes.checks import router as checks_router  # noqa: E402
 from luplo.server.routes.items import router as items_router  # noqa: E402
 from luplo.server.routes.projects import router as projects_router  # noqa: E402
 from luplo.server.routes.search import router as search_router  # noqa: E402
@@ -86,6 +87,7 @@ app.include_router(projects_router, prefix="/projects", tags=["projects"])
 app.include_router(items_router, prefix="/items", tags=["items"])
 app.include_router(work_units_router, prefix="/work-units", tags=["work-units"])
 app.include_router(search_router, prefix="/search", tags=["search"])
+app.include_router(checks_router, prefix="/checks", tags=["checks"])
 
 
 @app.get("/health")

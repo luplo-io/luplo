@@ -32,6 +32,8 @@ from luplo.core import (
 from luplo.core import (
     item_types as _item_types_mod,
 )
+from luplo.core.checks import Finding
+from luplo.core.checks import run_checks as _run_checks
 from luplo.core.embedding import EmbeddingBackend, NullEmbedding
 from luplo.core.impact import ImpactResult
 from luplo.core.models import (
@@ -459,6 +461,23 @@ class LocalBackend:
     ) -> ImpactResult:
         async with self.pool.connection() as conn:
             return await impact_fn.impact(conn, item_id, project_id, depth=depth)
+
+    # ── Checks ───────────────────────────────────────────────────
+
+    async def run_checks(
+        self,
+        project_id: str,
+        *,
+        rule_names: list[str] | None = None,
+        disabled: tuple[str, ...] = (),
+    ) -> list[Finding]:
+        async with self.pool.connection() as conn:
+            return await _run_checks(
+                conn,
+                project_id,
+                rule_names=rule_names,
+                disabled=disabled,
+            )
 
     # ── Search ───────────────────────────────────────────────────
 

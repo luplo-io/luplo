@@ -37,11 +37,16 @@ class _ResearchSection(TypedDict, total=False):
     ttl_days: int | str
 
 
+class _ChecksSection(TypedDict, total=False):
+    disabled_rules: list[str]
+
+
 class _ConfigFile(TypedDict, total=False):
     backend: _BackendSection
     project: _ProjectSection
     actor: _ActorSection
     research: _ResearchSection
+    checks: _ChecksSection
 
 
 @dataclass(slots=True)
@@ -57,6 +62,7 @@ class LuploConfig:
     actor_name: str = ""
     actor_email: str = ""
     research_ttl_days: int = DEFAULT_RESEARCH_TTL_DAYS
+    disabled_checks: tuple[str, ...] = ()
 
 
 def find_config_file() -> Path | None:
@@ -98,6 +104,9 @@ def load_config() -> LuploConfig:
 
         research = data.get("research", {})
         cfg.research_ttl_days = int(research.get("ttl_days", cfg.research_ttl_days))
+
+        checks = data.get("checks", {})
+        cfg.disabled_checks = tuple(checks.get("disabled_rules", []))
 
     # Layer 2: env vars override
     cfg.db_url = os.environ.get("LUPLO_DB_URL", cfg.db_url)

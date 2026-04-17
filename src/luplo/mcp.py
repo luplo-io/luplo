@@ -345,6 +345,57 @@ async def luplo_item_search(
 
 
 @mcp.tool()
+async def luplo_check(
+    project_id: str,
+    rule: str = "",
+    severity: str = "warn",
+) -> str:
+    """Run the deterministic rule pack and return findings as markdown.
+
+    Rules are project-local, SQL+Python only, and never call an LLM.
+    The set is fixed per release — there is no plugin runtime.
+
+    Args:
+        project_id: Project to check.
+        rule: If set, run only this rule (name). Empty means all
+            enabled rules.
+        severity: Show findings at or above this level — "error",
+            "warn" (default), or "info".
+
+    Returns:
+        Markdown listing each finding with its severity, rule name,
+        item id prefix, and message. Empty state returns a short "no
+        findings" line.
+    """
+    from luplo.core.errors import ValidationError
+
+    severity_order = {"info": 0, "warn": 1, "error": 2}
+    if severity not in severity_order:
+        return f"Error: severity must be error/warn/info (got {severity!r})."
+
+    b = await _get_backend()
+    try:
+        findings = await b.run_checks(
+            project_id,
+            rule_names=[rule] if rule else None,
+        )
+    except ValidationError as exc:
+        return f"Error: {exc.message}"
+
+    threshold = severity_order[severity]
+    shown = [f for f in findings if severity_order[f.severity] >= threshold]
+
+    if not shown:
+        return f"No findings at severity ≥ {severity}."
+
+    lines = [f"Found {len(shown)} finding(s):"]
+    for f in shown:
+        target = f" [{f.item_id[:8]}]" if f.item_id else ""
+        lines.append(f"- [{f.severity}] {f.rule_name}{target} — {f.message}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def luplo_impact(
     item_id: str,
     project_id: str,
