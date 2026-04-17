@@ -197,15 +197,17 @@ async def test_supersede_revalidates_passed_qa(
     assert refreshed.context["status"] == "pending"
 
     # Audit log should include a revalidation entry.
-    async with backend._pool.connection() as conn:  # type: ignore[attr-defined]
-        async with conn.cursor(row_factory=dict_row) as cur:
-            await cur.execute(
-                "SELECT metadata FROM audit_log"
-                " WHERE target_id = %s AND action = 'item.update'"
-                " ORDER BY id DESC LIMIT 1",
-                (passed.id,),
-            )
-            row = await cur.fetchone()
+    async with (
+        backend.pool.connection() as conn,
+        conn.cursor(row_factory=dict_row) as cur,
+    ):
+        await cur.execute(
+            "SELECT metadata FROM audit_log"
+            " WHERE target_id = %s AND action = 'item.update'"
+            " ORDER BY id DESC LIMIT 1",
+            (passed.id,),
+        )
+        row = await cur.fetchone()
     assert row is not None
     md = row["metadata"]
     assert md.get("trigger") == "supersede_revalidation"

@@ -23,7 +23,7 @@ from luplo.core.errors import (
     QAStateTransitionError,
 )
 from luplo.core.id_resolve import build_seed_clause
-from luplo.core.items import _row_to_item, create_item
+from luplo.core.items import row_to_item, create_item
 from luplo.core.models import Item, ItemCreate
 
 ITEM_TYPE = "qa_check"
@@ -89,7 +89,7 @@ async def _resolve_head(
     if len(qa_rows) > 1:
         matches = [(str(r["id"]), str(r.get("title") or "")) for r in qa_rows]
         raise AmbiguousIdError(any_chain_id, matches)
-    return _row_to_item(qa_rows[0])
+    return row_to_item(qa_rows[0])
 
 
 # ── Create ──────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ async def _list_heads(
     )
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, params)
-        return [_row_to_item(r) for r in await cur.fetchall()]
+        return [row_to_item(r) for r in await cur.fetchall()]
 
 
 async def list_qa(

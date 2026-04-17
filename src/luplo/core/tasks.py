@@ -29,7 +29,7 @@ from luplo.core.errors import (
     TaskStateTransitionError,
 )
 from luplo.core.id_resolve import build_seed_clause
-from luplo.core.items import _row_to_item, create_item, get_item_including_deleted
+from luplo.core.items import row_to_item, create_item, get_item_including_deleted
 from luplo.core.models import Item, ItemCreate
 
 ITEM_TYPE = "task"
@@ -107,7 +107,7 @@ async def _resolve_head(
     if len(task_rows) > 1:
         matches = [(str(r["id"]), str(r.get("title") or "")) for r in task_rows]
         raise AmbiguousIdError(any_chain_id, matches)
-    return _row_to_item(task_rows[0])
+    return row_to_item(task_rows[0])
 
 
 # ── Create ──────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ async def list_tasks(
     ).format(where=where)
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, params)
-        return [_row_to_item(r) for r in await cur.fetchall()]
+        return [row_to_item(r) for r in await cur.fetchall()]
 
 
 async def get_in_progress_task(conn: AsyncConnection[Any], work_unit_id: str) -> Item | None:

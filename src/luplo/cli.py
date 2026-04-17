@@ -464,7 +464,7 @@ def work_resume(
 
     async def _do() -> None:
         async with _backend() as b:
-            async with b._pool.connection() as conn:
+            async with b.pool.connection() as conn:
                 results = await find_work_units(conn, pid, query)
             if not results:
                 typer.echo("No matching work units in progress.")

@@ -70,23 +70,23 @@ class LocalBackend:
         pool: AsyncConnectionPool,
         embedding: EmbeddingBackend | None = None,
     ) -> None:
-        self._pool = pool
-        self._embedding = embedding or NullEmbedding()
+        self.pool = pool
+        self._embedding: EmbeddingBackend = embedding or NullEmbedding()
 
     # ── Projects ─────────────────────────────────────────────────
 
     async def create_project(
         self, *, id: str, name: str, description: str | None = None
     ) -> Project:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await projects.create_project(conn, id=id, name=name, description=description)
 
     async def get_project(self, id: str) -> Project | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await projects.get_project(conn, id)
 
     async def list_projects(self) -> list[Project]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await projects.list_projects(conn)
 
     # ── Actors ───────────────────────────────────────────────────
@@ -103,7 +103,7 @@ class LocalBackend:
         # email is required at the DB layer after 0002; synthesise a
         # placeholder for callers that didn't specify one (tests, seed scripts).
         actual_email = email if email is not None else f"{id}@placeholder.local"
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await actors.create_actor(
                 conn,
                 id=id,
@@ -114,17 +114,17 @@ class LocalBackend:
             )
 
     async def get_actor(self, id: str) -> Actor | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await actors.get_actor(conn, id)
 
     # ── Item Types ───────────────────────────────────────────────
 
     async def list_item_types(self) -> list[ItemType]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await _item_types_mod.list_item_types(conn)
 
     async def get_item_type(self, key: str) -> ItemType | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await _item_types_mod.get_item_type(conn, key)
 
     async def create_item_type(
@@ -135,7 +135,7 @@ class LocalBackend:
         schema: dict[str, Any],
         owner: str = "user",
     ) -> ItemType:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await _item_types_mod.create_item_type(
                 conn,
                 key=key,
@@ -145,7 +145,7 @@ class LocalBackend:
             )
 
     async def get_actor_by_email(self, email: str) -> Actor | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await actors.get_actor_by_email(conn, email)
 
     # ── Work Units ───────────────────────────────────────────────
@@ -160,7 +160,7 @@ class LocalBackend:
         system_ids: list[str] | None = None,
         created_by: str | None = None,
     ) -> WorkUnit:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             wu = await work_units.open_work_unit(
                 conn,
                 id=id,
@@ -181,17 +181,17 @@ class LocalBackend:
             return wu
 
     async def get_work_unit(self, id: str, *, project_id: str | None = None) -> WorkUnit | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await work_units.get_work_unit(conn, id, project_id=project_id)
 
     async def list_work_units(
         self, project_id: str, *, status: str | None = None
     ) -> list[WorkUnit]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await work_units.list_work_units(conn, project_id, status=status)
 
     async def close_work_unit(self, id: str, *, actor_id: str, force: bool = False) -> WorkUnit:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             # Gate: refuse close when an in_progress task is alive (P7's
             # "domain validation only" applied here too — no DB trigger).
             if not force:
@@ -223,7 +223,7 @@ class LocalBackend:
         description: str | None = None,
         depends_on_system_ids: list[str] | None = None,
     ) -> System:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await systems.create_system(
                 conn,
                 id=id,
@@ -234,22 +234,22 @@ class LocalBackend:
             )
 
     async def get_system(self, id: str, *, project_id: str | None = None) -> System | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await systems.get_system(conn, id, project_id=project_id)
 
     async def list_systems(self, project_id: str) -> list[System]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await systems.list_systems(conn, project_id)
 
     async def update_system(self, id: str, **kwargs: Any) -> System:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             result = await systems.update_system(conn, id, **kwargs)
             return result  # type: ignore[return-value]
 
     # ── Items ────────────────────────────────────────────────────
 
     async def create_item(self, data: ItemCreate) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             item = await items.create_item(conn, data)
 
             # Audit (D5 — single namespace 'item.{verb}')
@@ -347,7 +347,7 @@ class LocalBackend:
             )
 
     async def get_item(self, id: str, *, project_id: str | None = None) -> Item | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await items.get_item(conn, id, project_id=project_id)
 
     async def list_items(
@@ -361,7 +361,7 @@ class LocalBackend:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Item]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await items.list_items(
                 conn,
                 project_id,
@@ -374,7 +374,7 @@ class LocalBackend:
             )
 
     async def delete_item(self, id: str, *, actor_id: str) -> None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             deleted = await items.delete_item(conn, id, actor_id=actor_id)
             if deleted:
                 await audit.record_audit(
@@ -386,7 +386,7 @@ class LocalBackend:
                 )
 
     async def get_supersedes_chain(self, id: str) -> list[Item]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await items.get_supersedes_chain(conn, id)
 
     # ── Links ────────────────────────────────────────────────────
@@ -401,7 +401,7 @@ class LocalBackend:
         note: str | None = None,
         actor_id: str | None = None,
     ) -> Link:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             link = await links.create_link(
                 conn,
                 from_item_id=from_item_id,
@@ -428,11 +428,11 @@ class LocalBackend:
         direction: str = "from",
         link_type: str | None = None,
     ) -> list[Link]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await links.get_links(conn, item_id, direction=direction, link_type=link_type)
 
     async def delete_link(self, from_item_id: str, to_item_id: str, link_type: str) -> None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             await links.delete_link(conn, from_item_id, to_item_id, link_type)
 
     # ── Search ───────────────────────────────────────────────────
@@ -446,7 +446,7 @@ class LocalBackend:
         system_ids: list[str] | None = None,
         limit: int = 10,
     ) -> list[SearchResult]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await search_fn(
                 conn,
                 query,
@@ -470,7 +470,7 @@ class LocalBackend:
         scope_id: str | None = None,
         created_by: str | None = None,
     ) -> GlossaryGroup:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await glossary.create_glossary_group(
                 conn,
                 id=id,
@@ -485,7 +485,7 @@ class LocalBackend:
     async def get_glossary_group(
         self, id: str, *, project_id: str | None = None
     ) -> GlossaryGroup | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await glossary.get_glossary_group(conn, id, project_id=project_id)
 
     async def list_glossary_groups(
@@ -496,7 +496,7 @@ class LocalBackend:
         limit: int = 100,
         offset: int = 0,
     ) -> list[GlossaryGroup]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await glossary.list_glossary_groups(
                 conn,
                 project_id,
@@ -517,7 +517,7 @@ class LocalBackend:
         source_item_id: str | None = None,
         context_snippet: str | None = None,
     ) -> GlossaryTerm:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await glossary.create_glossary_term(
                 conn,
                 id=id,
@@ -531,7 +531,7 @@ class LocalBackend:
             )
 
     async def list_pending_terms(self, project_id: str, *, limit: int = 50) -> list[GlossaryTerm]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await glossary.list_pending_terms(conn, project_id, limit=limit)
 
     async def approve_term(
@@ -542,7 +542,7 @@ class LocalBackend:
         actor_id: str,
         as_canonical: bool = False,
     ) -> GlossaryTerm:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             result = await glossary.approve_term(
                 conn,
                 term_id,
@@ -567,7 +567,7 @@ class LocalBackend:
         actor_id: str,
         reason: str | None = None,
     ) -> GlossaryRejection:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             result = await glossary.reject_term(conn, term_id, actor_id=actor_id, reason=reason)
             await audit.record_audit(
                 conn,
@@ -585,7 +585,7 @@ class LocalBackend:
         *,
         actor_id: str,
     ) -> GlossaryGroup:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             result = await glossary.merge_groups(
                 conn, source_group_id, target_group_id, actor_id=actor_id
             )
@@ -598,14 +598,14 @@ class LocalBackend:
         new_canonical: str,
         actor_id: str,
     ) -> GlossaryGroup:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             result = await glossary.split_term(
                 conn, term_id, new_canonical=new_canonical, actor_id=actor_id
             )
             return result  # type: ignore[return-value]
 
     async def expand_query(self, query: str, project_id: str) -> str:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await glossary.expand_query(conn, query, project_id)
 
     # ── History ──────────────────────────────────────────────────
@@ -624,7 +624,7 @@ class LocalBackend:
         semantic_impact: str | None = None,
         source_event_id: str | None = None,
     ) -> HistoryEntry:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await history.record_history(
                 conn,
                 item_id=item_id,
@@ -648,7 +648,7 @@ class LocalBackend:
         semantic_impacts: list[str] | None = None,
         limit: int = 50,
     ) -> list[HistoryEntry]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await history.query_history(
                 conn,
                 project_id=project_id,
@@ -669,7 +669,7 @@ class LocalBackend:
         target_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             await audit.record_audit(
                 conn,
                 actor_id=actor_id,
@@ -693,7 +693,7 @@ class LocalBackend:
         body: str | None = None,
         context_extra: dict[str, Any] | None = None,
     ) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await tasks.create_task(
                 conn,
                 project_id=project_id,
@@ -707,19 +707,19 @@ class LocalBackend:
             )
 
     async def get_task(self, task_id: str, *, project_id: str | None = None) -> Item | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await tasks.get_task(conn, task_id, project_id=project_id)
 
     async def list_tasks(self, work_unit_id: str, *, status: str | None = None) -> list[Item]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await tasks.list_tasks(conn, work_unit_id, status=status)
 
     async def get_in_progress_task(self, work_unit_id: str) -> Item | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await tasks.get_in_progress_task(conn, work_unit_id)
 
     async def start_task(self, task_id: str, *, actor_id: str) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await tasks.start_task(conn, task_id, actor_id=actor_id)
             await audit.record_audit(
                 conn,
@@ -734,7 +734,7 @@ class LocalBackend:
     async def complete_task(
         self, task_id: str, *, actor_id: str, summary: str | None = None
     ) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await tasks.complete_task(
                 conn,
                 task_id,
@@ -752,7 +752,7 @@ class LocalBackend:
             return new
 
     async def block_task(self, task_id: str, *, actor_id: str, reason: str) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await tasks.block_task(
                 conn,
                 task_id,
@@ -798,7 +798,7 @@ class LocalBackend:
             return new
 
     async def skip_task(self, task_id: str, *, actor_id: str, reason: str | None = None) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await tasks.skip_task(
                 conn,
                 task_id,
@@ -822,7 +822,7 @@ class LocalBackend:
         *,
         actor_id: str,
     ) -> list[Item]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             refreshed = await tasks.reorder_tasks(
                 conn,
                 work_unit_id,
@@ -860,7 +860,7 @@ class LocalBackend:
         body: str | None = None,
         context_extra: dict[str, Any] | None = None,
     ) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await qa.create_qa(
                 conn,
                 project_id=project_id,
@@ -876,7 +876,7 @@ class LocalBackend:
             )
 
     async def get_qa(self, qa_id: str, *, project_id: str | None = None) -> Item | None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await qa.get_qa(conn, qa_id, project_id=project_id)
 
     async def list_qa(
@@ -886,7 +886,7 @@ class LocalBackend:
         status: str | None = None,
         work_unit_id: str | None = None,
     ) -> list[Item]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await qa.list_qa(
                 conn,
                 project_id,
@@ -895,19 +895,19 @@ class LocalBackend:
             )
 
     async def list_pending_qa_for_task(self, task_id: str) -> list[Item]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await qa.list_pending_for_task(conn, task_id)
 
     async def list_pending_qa_for_item(self, item_id: str) -> list[Item]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await qa.list_pending_for_item(conn, item_id)
 
     async def list_pending_qa_for_wu(self, work_unit_id: str) -> list[Item]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await qa.list_pending_for_wu(conn, work_unit_id)
 
     async def start_qa(self, qa_id: str, *, actor_id: str) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await qa.start_qa(conn, qa_id, actor_id=actor_id)
             await audit.record_audit(
                 conn,
@@ -920,7 +920,7 @@ class LocalBackend:
             return new
 
     async def pass_qa(self, qa_id: str, *, actor_id: str, evidence: str | None = None) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await qa.pass_qa(
                 conn,
                 qa_id,
@@ -938,7 +938,7 @@ class LocalBackend:
             return new
 
     async def fail_qa(self, qa_id: str, *, actor_id: str, reason: str) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await qa.fail_qa(
                 conn,
                 qa_id,
@@ -956,7 +956,7 @@ class LocalBackend:
             return new
 
     async def block_qa(self, qa_id: str, *, actor_id: str, reason: str) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await qa.block_qa(
                 conn,
                 qa_id,
@@ -974,7 +974,7 @@ class LocalBackend:
             return new
 
     async def skip_qa(self, qa_id: str, *, actor_id: str) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await qa.skip_qa(conn, qa_id, actor_id=actor_id)
             await audit.record_audit(
                 conn,
@@ -987,7 +987,7 @@ class LocalBackend:
             return new
 
     async def assign_qa(self, qa_id: str, *, actor_id: str, assignee_actor_id: str) -> Item:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             new = await qa.assign_qa(
                 conn,
                 qa_id,
@@ -1019,7 +1019,7 @@ class LocalBackend:
         source_event_id: str | None = None,
         debounce_seconds: int = 300,
     ) -> SyncJob:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await _enqueue_sync(
                 conn,
                 source_type=source_type,
@@ -1030,13 +1030,13 @@ class LocalBackend:
             )
 
     async def get_ready_sync_jobs(self, *, limit: int = 1) -> list[SyncJob]:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             return await _get_ready(conn, limit=limit)
 
     async def complete_sync_job(self, job_id: int) -> None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             await _complete_sync(conn, job_id)
 
     async def fail_sync_job(self, job_id: int, *, error: str) -> None:
-        async with self._pool.connection() as conn:
+        async with self.pool.connection() as conn:
             await _fail_sync(conn, job_id, error=error)

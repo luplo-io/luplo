@@ -24,7 +24,7 @@ _ITEM_FIELDS: frozenset[str] = frozenset(f.name for f in dataclasses.fields(Item
 
 # Columns returned by every SELECT / RETURNING clause.
 # Must stay in sync with the Item dataclass (excludes search_tsv, embedding).
-_COLUMNS = (
+ITEM_COLUMNS = (
     "id",
     "project_id",
     "item_type",
@@ -56,10 +56,10 @@ _COLUMNS = (
     "context",
 )
 
-_RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in _COLUMNS)
+_RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in ITEM_COLUMNS)
 
 
-def _row_to_item(row: dict[str, Any]) -> Item:
+def row_to_item(row: dict[str, Any]) -> Item:
     """Convert a dict-row from psycopg into an ``Item`` dataclass.
 
     Tolerates extra columns (e.g. ``search_tsv``, ``embedding``) returned
@@ -161,7 +161,7 @@ async def create_item(conn: AsyncConnection[Any], data: ItemCreate) -> Item:
         await cur.execute(query, params)
         row = await cur.fetchone()
         assert row is not None, "INSERT … RETURNING produced no row"
-        return _row_to_item(row)
+        return row_to_item(row)
 
 
 # ── Read ─────────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ async def get_item(
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
-        return _row_to_item(row) if row else None
+        return row_to_item(row) if row else None
 
 
 async def get_item_including_deleted(
@@ -228,7 +228,7 @@ async def get_item_including_deleted(
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
-        return _row_to_item(row) if row else None
+        return row_to_item(row) if row else None
 
 
 async def list_items(
@@ -291,7 +291,7 @@ async def list_items(
 
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, params)
-        return [_row_to_item(row) for row in await cur.fetchall()]
+        return [row_to_item(row) for row in await cur.fetchall()]
 
 
 # ── Delete (soft) ────────────────────────────────────────────────
@@ -331,7 +331,7 @@ async def get_supersedes_chain(conn: AsyncConnection[Any], item_id: str) -> list
 
     If *item_id* does not exist, returns an empty list.
     """
-    _cols_aliased = sql.SQL(", ").join(sql.SQL("i.") + sql.Identifier(c) for c in _COLUMNS)
+    _cols_aliased = sql.SQL(", ").join(sql.SQL("i.") + sql.Identifier(c) for c in ITEM_COLUMNS)
     query = sql.SQL(
         "WITH RECURSIVE chain AS ("
         "  SELECT {columns}, 0 AS depth FROM items WHERE id = %(id)s"
@@ -347,4 +347,4 @@ async def get_supersedes_chain(conn: AsyncConnection[Any], item_id: str) -> list
 
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, {"id": item_id})
-        return [_row_to_item(row) for row in await cur.fetchall()]
+        return [row_to_item(row) for row in await cur.fetchall()]

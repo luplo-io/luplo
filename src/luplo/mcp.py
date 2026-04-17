@@ -180,7 +180,7 @@ async def luplo_work_resume(query: str, project_id: str) -> str:
     from luplo.core.work_units import find_work_units
 
     b = await _get_backend()
-    async with b._pool.connection() as conn:
+    async with b.pool.connection() as conn:
         results = await find_work_units(conn, project_id, query)
 
     if not results:

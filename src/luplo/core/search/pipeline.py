@@ -14,8 +14,7 @@ from psycopg.rows import dict_row
 
 from luplo.core.embedding import EmbeddingBackend, NullEmbedding
 from luplo.core.glossary import expand_query
-from luplo.core.items import _COLUMNS as ITEM_COLUMNS
-from luplo.core.items import _row_to_item
+from luplo.core.items import ITEM_COLUMNS, row_to_item
 from luplo.core.models import SearchResult
 from luplo.core.search.tsquery import build_tsquery
 
@@ -133,10 +132,10 @@ async def _tsquery_search(
 
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, params)
-        results = []
+        results: list[SearchResult] = []
         for row in await cur.fetchall():
             rank = row.pop("rank")
-            item = _row_to_item(row)
+            item = row_to_item(row)
             snippet = _make_snippet(item.title, item.body)
             results.append(SearchResult(item=item, score=float(rank), snippet=snippet))
         return results
@@ -192,7 +191,7 @@ async def _vector_rerank(
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm_a = sum(x * x for x in a) ** 0.5
     norm_b = sum(x * x for x in b) ** 0.5
     if norm_a == 0 or norm_b == 0:
