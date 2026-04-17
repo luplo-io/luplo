@@ -7,6 +7,75 @@ the migrations in `db/migrations/`.
 For the schema delta of any version, read the matching `0NNN_*.py` file
 in that directory.
 
+## v0.6 — Audit, five refusals, password reset
+
+**Migration:** `0005_auth_reset_tokens`
+
+Schema delta is small — one new table for magic-link password reset
+tokens. The bulk of v0.6 is new surface and a public identity rewrite,
+none of which touches the schema.
+
+### Schema
+
+- **`auth_reset_tokens`** — `token_hash TEXT PRIMARY KEY`, `actor_id
+  UUID REFERENCES actors(id) ON DELETE CASCADE`, `expires_at`,
+  `used_at NULLABLE`. Single-use, 15-minute TTL enforced in the
+  handler. Argon2id hashes only; plaintext never touches disk or logs.
+
+### Surface
+
+- **Audit (`lp impact`, `luplo_impact`, `GET /items/{id}/impact`)** —
+  recursive CTE over typed edges (`depends` / `blocks` / `supersedes`
+  / `conflicts`), five-hop ceiling enforced server-side, cycle
+  prevention via path array, project-scoped, soft-delete-aware. Tree /
+  flat / JSON output formats share the same structured payload across
+  all three surfaces.
+- **`lp task edit`** — edit a task's title / body / sort_order via
+  supersede. Status machine preserved; a typo on a done task can still
+  be fixed. MCP tool `luplo_task_edit` mirrors.
+- **On `task done`, propose a decision draft** — pure-read helper
+  `suggest_decision_from_task` returns an `ItemCreate` draft (never
+  inserted). CLI flag `--propose-decision`; MCP `luplo_task_done`
+  gains `propose_decision=False`. Returns `None` when the task lacks
+  body/summary — honest silence over hallucinated template.
+- **Web-search-style query dialect** — `"exact phrase"` via `<->`,
+  `OR` disjunction, `-negation` via `!`. Glossary expansion applies
+  only to required and OR-group terms; phrases and negations pass
+  through literally (expanding a negation would silently re-include
+  the excluded concept).
+- **Password reset** — `POST /auth/reset-request` (always 200, no
+  enumeration), `POST /auth/reset-confirm` (generic failure string,
+  never leaks *why*). `EmailSender` protocol with logging / SMTP
+  backends; transactional services (SES, Postmark) plug in later by
+  implementing the protocol.
+- **Mutator project scope** — 11 task/qa mutators gained optional
+  `project_id` kwarg, threaded into prefix resolution. Closes the
+  v0.5 residual risk of a short prefix silently mutating a row in
+  another project.
+
+### Docs
+
+- Philosophy restructured around **five refusals**
+  (vectors-don't-lead, five-hop, decisions-immutable,
+  typed-and-bounded-edges, not-a-general-memory); the three
+  operational commitments moved below as the enforcement layer.
+- New `docs/concepts/positioning.md` — 8-axis comparison table
+  against "a generic AI-memory tool".
+- New `docs/project/roadmap.md` — sanitized public roadmap
+  (Audit → `/archive` → Notion webhook → rule pack).
+- Hero tagline unified across README, docs, pyproject, and server
+  `app.py`: "AI memory that survives across sessions, teammates,
+  and vendors."
+
+### Known gaps
+
+- JWT sessions issued before a password reset remain valid until
+  their TTL. Session revocation requires a token-denylist store
+  that v0.6 does not ship.
+- Gif rendering for the README is deferred — VHS tape scripts and
+  fixtures live in `demos/`, but `demos/output/*.gif` must be
+  regenerated locally via `./demos/reset-db.sh && vhs demos/*.tape`.
+
 ## v0.5.3 — `research` item type
 
 **Migration:** `0004_add_research_item_type`
