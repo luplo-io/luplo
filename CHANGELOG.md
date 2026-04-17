@@ -11,6 +11,13 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-17
+
+Narrative v0.6 ships. PyPI version jumps 0.1.0 → 0.6.0 to align the
+SemVer axis with the migration-aligned narrative versions in
+`docs/project/changelog.md` (v0.5, v0.5.1, v0.5.2, v0.5.3, v0.6). Pre-1.0
+version numbers are not dense — skipping 0.2 through 0.5 is deliberate.
+
 ### Added
 
 - **Audit (impact analysis)** — `lp impact <id> [--depth N<=5] [--format tree|flat|json]`,
@@ -94,5 +101,6 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/luplo-io/luplo/releases/tag/v0.6.0
 [0.1.0]: https://github.com/luplo-io/luplo/releases/tag/v0.1.0
