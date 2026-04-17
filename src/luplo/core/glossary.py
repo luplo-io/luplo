@@ -348,7 +348,8 @@ async def reject_term(
         await cur.execute(
             "INSERT INTO glossary_rejections (group_id, rejected_term, rejected_by, reason)"
             " VALUES (%(group_id)s, %(term)s, %(actor)s, %(reason)s)"
-            " ON CONFLICT (group_id, rejected_term) DO NOTHING",
+            " ON CONFLICT (group_id, rejected_term) DO NOTHING"
+            " RETURNING rejected_at",
             {
                 "group_id": term_row["group_id"],
                 "term": term_row["surface"],
@@ -356,12 +357,22 @@ async def reject_term(
                 "reason": reason,
             },
         )
+        rej_row = await cur.fetchone()
+        if rej_row is None:
+            # Conflict (already rejected) — fetch the existing timestamp.
+            await cur.execute(
+                "SELECT rejected_at FROM glossary_rejections"
+                " WHERE group_id = %(group_id)s AND rejected_term = %(term)s",
+                {"group_id": term_row["group_id"], "term": term_row["surface"]},
+            )
+            rej_row = await cur.fetchone()
+            assert rej_row is not None
 
         return GlossaryRejection(
             group_id=term_row["group_id"],
             rejected_term=term_row["surface"],
             rejected_by=actor_id,
-            rejected_at=None,  # type: ignore[arg-type]  # filled by DB default
+            rejected_at=rej_row["rejected_at"],
             reason=reason,
         )
 
@@ -531,7 +542,7 @@ async def expand_query(
 
     # Step 3: Build expanded query parts
     parts: list[str] = []
-    for word, norm in zip(words, normalised):
+    for word, norm in zip(words, normalised, strict=True):
         gid = word_to_group.get(norm)
         if gid and gid in group_surfaces:
             surfaces = group_surfaces[gid]
