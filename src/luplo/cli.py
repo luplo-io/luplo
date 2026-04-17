@@ -954,6 +954,12 @@ def task_start(
 def task_done(
     task_id: str = typer.Argument(...),
     summary: str | None = typer.Option(None, "--summary"),
+    propose_decision: bool = typer.Option(
+        False,
+        "--propose-decision",
+        help="After completion, print a draft decision item derived from this task. "
+        "The draft is NOT inserted — copy-paste the lp command shown to save it.",
+    ),
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     """Transition task to 'done'."""
@@ -964,6 +970,26 @@ def task_done(
         async with _backend() as b:
             t = await b.complete_task(task_id, actor_id=aid, summary=summary, project_id=pid)
             _print_task(t)
+
+            if propose_decision:
+                draft = await b.suggest_decision_from_task(t.id, project_id=pid)
+                typer.echo("")
+                if draft is None:
+                    typer.echo(
+                        "No decision draft suggested "
+                        "(task has no body or summary — nothing to derive from).",
+                    )
+                else:
+                    typer.echo("Suggested decision (not saved):")
+                    typer.echo(f"  title:     {draft.title}")
+                    if draft.body:
+                        typer.echo(f"  body:      {draft.body}")
+                    if draft.rationale:
+                        typer.echo(f"  rationale: {draft.rationale}")
+                    if draft.tags:
+                        typer.echo(f"  tags:      {', '.join(draft.tags)}")
+                    typer.echo("")
+                    typer.echo("To save, run: lp items add <title> --type decision ...")
 
     _run(_do())
 
@@ -1020,6 +1046,38 @@ def task_reorder(
             rows = await b.reorder_tasks(work_unit, task_ids, actor_id=aid, project_id=pid)
             for r in rows:
                 _print_task(r)
+
+    _run(_do())
+
+
+@task_app.command("edit")
+def task_edit(
+    task_id: str = typer.Argument(...),
+    title: str | None = typer.Option(None, "--title", "-t", help="New title."),
+    body: str | None = typer.Option(None, "--body", "-b", help="New body."),
+    sort_order: int | None = typer.Option(None, "--sort", "-s", help="New sort_order."),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Edit a task's title / body / sort_order via a supersede row.
+
+    Status is preserved — use lp task start / done / blocked / skip to
+    change status. Passing no flags is a no-op that just returns the
+    current head.
+    """
+    aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            t = await b.edit_task(
+                task_id,
+                actor_id=aid,
+                title=title,
+                body=body,
+                sort_order=sort_order,
+                project_id=pid,
+            )
+            _print_task(t)
 
     _run(_do())
 

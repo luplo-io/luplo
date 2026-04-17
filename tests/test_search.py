@@ -9,23 +9,102 @@ from luplo.core.glossary import create_glossary_group, create_glossary_term
 from luplo.core.items import create_item
 from luplo.core.models import ItemCreate
 from luplo.core.search import search
-from luplo.core.search.tsquery import build_tsquery
+from luplo.core.search.tsquery import build_tsquery, parse_user_query
 
-# ── tsquery builder (unit, no DB) ────────────────────────────────
-
-
-def test_build_tsquery_simple() -> None:
-    assert build_tsquery("hello & world") == "hello & world"
+# ── Query parser + tsquery builder (unit, no DB) ─────────────────
 
 
-def test_build_tsquery_with_or() -> None:
-    result = build_tsquery("(vendor | shop) & budget")
-    assert result == "(vendor | shop) & budget"
+def test_parse_plain_words_are_required_terms() -> None:
+    clauses = parse_user_query("hello world")
+    assert len(clauses) == 2
+    assert all(not c.phrase and not c.negated for c in clauses)  # type: ignore[union-attr]
+    assert [c.text for c in clauses] == ["hello", "world"]  # type: ignore[union-attr]
 
 
-def test_build_tsquery_empty() -> None:
-    assert build_tsquery("") == ""
-    assert build_tsquery("   ") == ""
+def test_parse_quoted_phrase() -> None:
+    clauses = parse_user_query('"JWT rotation"')
+    assert len(clauses) == 1
+    assert clauses[0].phrase is True  # type: ignore[union-attr]
+    assert clauses[0].text == "JWT rotation"  # type: ignore[union-attr]
+
+
+def test_parse_negated_word() -> None:
+    clauses = parse_user_query("-session")
+    assert len(clauses) == 1
+    assert clauses[0].negated is True  # type: ignore[union-attr]
+    assert clauses[0].text == "session"  # type: ignore[union-attr]
+
+
+def test_parse_or_keyword_groups_adjacent_terms() -> None:
+    from luplo.core.search.tsquery import OrGroup
+
+    clauses = parse_user_query("auth OR password")
+    assert len(clauses) == 1
+    assert isinstance(clauses[0], OrGroup)
+    assert [m.text for m in clauses[0].members] == ["auth", "password"]
+
+
+def test_parse_mixed_operators() -> None:
+    from luplo.core.search.tsquery import OrGroup
+
+    clauses = parse_user_query('auth OR password -session "JWT rotation"')
+    assert len(clauses) == 3
+    assert isinstance(clauses[0], OrGroup)
+    assert clauses[1].negated is True  # type: ignore[union-attr]
+    assert clauses[2].phrase is True  # type: ignore[union-attr]
+
+
+def test_build_tsquery_empty_clauses() -> None:
+    assert build_tsquery([]) == ""
+
+
+def test_build_tsquery_plain_required() -> None:
+    clauses = parse_user_query("hello world")
+    result = build_tsquery(clauses)
+    assert result == "'hello' & 'world'"
+
+
+def test_build_tsquery_negation_renders_with_bang() -> None:
+    clauses = parse_user_query("auth -session")
+    result = build_tsquery(clauses)
+    assert "'auth'" in result
+    assert "!'session'" in result
+
+
+def test_build_tsquery_phrase_uses_followed_by_operator() -> None:
+    clauses = parse_user_query('"JWT rotation"')
+    result = build_tsquery(clauses)
+    assert "'JWT' <-> 'rotation'" in result
+
+
+def test_build_tsquery_or_group_uses_pipe() -> None:
+    clauses = parse_user_query("auth OR password")
+    result = build_tsquery(clauses)
+    assert result == "('auth' | 'password')"
+
+
+def test_build_tsquery_expands_required_terms_through_glossary() -> None:
+    clauses = parse_user_query("auth")
+    result = build_tsquery(clauses, glossary_map={"auth": ["auth", "authentication", "sign-in"]})
+    # Sorted aliases disjoined.
+    assert result == "('auth' | 'authentication' | 'sign-in')"
+
+
+def test_build_tsquery_does_not_expand_negations() -> None:
+    """A glossary alias for a negated term must NOT re-include it."""
+    clauses = parse_user_query("-session")
+    result = build_tsquery(clauses, glossary_map={"session": ["session", "cookie", "bearer"]})
+    assert result == "!'session'"
+    assert "cookie" not in result
+    assert "bearer" not in result
+
+
+def test_build_tsquery_does_not_expand_phrases() -> None:
+    """Phrase tokens stay literal — no alias substitution inside."""
+    clauses = parse_user_query('"JWT rotation"')
+    result = build_tsquery(clauses, glossary_map={"jwt": ["jwt", "token"]})
+    assert "token" not in result
+    assert "'JWT' <-> 'rotation'" in result
 
 
 # ── Full pipeline (integration) ──────────────────────────────────

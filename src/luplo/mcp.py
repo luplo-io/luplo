@@ -533,10 +533,15 @@ async def luplo_task_done(
     summary: str = "",
     actor_id: str = "claude",
     project_id: str = "",
+    propose_decision: bool = False,
 ) -> str:
     """Transition a task to 'done'.
 
-    Pass *project_id* to scope prefix resolution.
+    Pass *project_id* to scope prefix resolution. When
+    *propose_decision* is true, the response is followed by a draft
+    decision item derived from this task — never inserted. The draft
+    is a suggestion for the caller to show the human, who then decides
+    whether to save it via ``luplo_item_upsert``.
     """
     b = await _get_backend()
     t = await b.complete_task(
@@ -545,7 +550,51 @@ async def luplo_task_done(
         summary=summary or None,
         project_id=project_id or None,
     )
-    return f"Completed task: {t.title} (new id: {t.id})"
+    out = f"Completed task: {t.title} (new id: {t.id})"
+
+    if propose_decision:
+        draft = await b.suggest_decision_from_task(t.id, project_id=project_id or None)
+        if draft is None:
+            out += "\n\nNo decision draft suggested (task has no body or summary)."
+        else:
+            out += "\n\n-- Suggested decision (NOT saved) --"
+            out += f"\ntitle: {draft.title}"
+            if draft.body:
+                out += f"\nbody: {draft.body}"
+            if draft.rationale:
+                out += f"\nrationale: {draft.rationale}"
+            if draft.tags:
+                out += f"\ntags: {', '.join(draft.tags)}"
+            out += "\n\nTo save, call luplo_item_upsert with these fields."
+
+    return out
+
+
+@mcp.tool()
+async def luplo_task_edit(
+    task_id: str,
+    title: str = "",
+    body: str = "",
+    sort_order: int = -1,
+    actor_id: str = "claude",
+    project_id: str = "",
+) -> str:
+    """Edit a task's title / body / sort_order via supersede.
+
+    Status is preserved (call luplo_task_start / luplo_task_done etc. to
+    change status). Pass empty strings / sort_order=-1 for fields you do
+    not want to change. ``project_id`` scopes prefix resolution.
+    """
+    b = await _get_backend()
+    t = await b.edit_task(
+        task_id,
+        actor_id=_resolve_actor(actor_id),
+        title=title or None,
+        body=body or None,
+        sort_order=sort_order if sort_order >= 0 else None,
+        project_id=project_id or None,
+    )
+    return f"Edited task: {t.title} (new id: {t.id}, supersedes={t.supersedes_id})"
 
 
 @mcp.tool()

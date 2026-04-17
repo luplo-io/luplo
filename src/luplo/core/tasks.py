@@ -361,6 +361,139 @@ async def skip_task(
     return await _supersede_with_context(conn, head, new_context, actor_id)
 
 
+# ── Decision suggestion (augment-not-replace) ──────────────────
+
+
+async def suggest_decision_from_task(
+    conn: AsyncConnection[Any],
+    task_id: str,
+    *,
+    project_id: str | None = None,
+) -> ItemCreate | None:
+    """Build a draft ``decision`` item from a task without inserting it.
+
+    Intended for the "on ``task done`` propose a decision" flow. The
+    draft is returned to the caller; nothing is written to the database.
+    Inserting the draft remains an explicit user step — the
+    augment-not-replace commitment in the philosophy doc forbids the
+    tool from deciding *this moment is the moment to save a decision*.
+
+    Returns ``None`` when the task lacks enough content to support a
+    meaningful draft (no body, no summary, default title). Returning a
+    template in that case would be a confident guess dressed as a
+    suggestion — honesty-over-coverage says no.
+
+    Args:
+        conn: Async psycopg connection.
+        task_id: Any ID in the task's supersede chain.
+        project_id: Optional project scope for prefix resolution.
+
+    Returns:
+        An :class:`ItemCreate` ready to be shown to the user, or ``None``
+        when there is nothing worth suggesting.
+
+    Raises:
+        TaskNotFoundError: If the prefix does not resolve to a task.
+    """
+    head = await _resolve_head(conn, task_id, project_id=project_id)
+
+    summary = head.context.get("summary")
+    body = head.body
+
+    if not body and not summary:
+        return None
+
+    body_parts: list[str] = []
+    if body:
+        body_parts.append(body)
+    if summary:
+        body_parts.append(f"Outcome: {summary}")
+
+    tags = ["from_task", *head.tags]
+
+    return ItemCreate(
+        project_id=head.project_id,
+        actor_id=head.actor_id,
+        item_type="decision",
+        title=f"Decision from task: {head.title}",
+        body="\n\n".join(body_parts),
+        rationale=f"Derived from task {head.id[:8]} ({head.title}).",
+        work_unit_id=head.work_unit_id,
+        system_ids=head.system_ids,
+        tags=tags,
+        source_ref=f"task:{head.id}",
+    )
+
+
+# ── Edit (title / body / sort_order in a supersede row) ─────────
+
+
+async def edit_task(
+    conn: AsyncConnection[Any],
+    task_id: str,
+    *,
+    actor_id: str,
+    title: str | None = None,
+    body: str | None = None,
+    sort_order: int | None = None,
+    project_id: str | None = None,
+) -> Item:
+    """Edit a task's title / body / sort_order by creating a supersede row.
+
+    The status machine is preserved — an edit never transitions a task
+    between ``proposed`` / ``in_progress`` / ``done`` / ``blocked`` /
+    ``skipped``. Changing status is the job of the dedicated
+    :func:`start_task`, :func:`complete_task`, and similar verbs.
+
+    Pass only the fields you want to change; the rest are copied from
+    the current head. Passing no changeable field is a no-op that still
+    returns the current head unchanged (useful when the caller only
+    wants to revalidate existence).
+
+    Args:
+        conn: Async psycopg connection.
+        task_id: Full UUID or hex prefix of any row in the task's
+            supersede chain.
+        actor_id: Who is performing the edit.
+        title: New title, or ``None`` to keep the current one.
+        body: New body, or ``None`` to keep the current one.
+        sort_order: New sort_order, or ``None`` to keep the current one.
+        project_id: Optional project scope for prefix resolution.
+
+    Returns:
+        The new head row (or the unchanged head when no fields changed).
+
+    Raises:
+        TaskNotFoundError: If the prefix does not resolve to a task.
+        AmbiguousIdError: If the prefix matches multiple distinct heads.
+    """
+    head = await _resolve_head(conn, task_id, project_id=project_id)
+
+    no_changes = title is None and body is None and sort_order is None
+    if no_changes:
+        return head
+
+    new_context = dict(head.context)
+    if sort_order is not None:
+        new_context["sort_order"] = sort_order
+
+    return await create_item(
+        conn,
+        ItemCreate(
+            project_id=head.project_id,
+            actor_id=actor_id,
+            item_type=ITEM_TYPE,
+            title=title if title is not None else head.title,
+            body=body if body is not None else head.body,
+            work_unit_id=head.work_unit_id,
+            system_ids=head.system_ids,
+            tags=head.tags,
+            supersedes_id=head.id,
+            context=new_context,
+        ),
+    )
+
+
 # ── Reorder (in-place per P10) ──────────────────────────────────
 
 

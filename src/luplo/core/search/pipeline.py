@@ -1,8 +1,13 @@
-"""Full search pipeline: glossary expand → tsquery → optional vector rerank.
+"""Full search pipeline: parse → glossary expand → tsquery → optional rerank.
 
 Vector is **ranking only, never primary search**.  tsquery does retrieval;
 vectors reorder the candidates by semantic similarity.  If the embedding
 backend is null (default), reranking is skipped entirely.
+
+The query dialect (phrases, OR, negation) is parsed by
+:func:`luplo.core.search.tsquery.parse_user_query`. Glossary expansion is
+applied only to required and OR-group terms — phrases and negated terms
+pass through literally.
 """
 
 from __future__ import annotations
@@ -13,10 +18,10 @@ from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
 from luplo.core.embedding import EmbeddingBackend, NullEmbedding
-from luplo.core.glossary import expand_query
+from luplo.core.glossary import fetch_glossary_map
 from luplo.core.items import ITEM_COLUMNS, row_to_item
 from luplo.core.models import SearchResult
-from luplo.core.search.tsquery import build_tsquery
+from luplo.core.search.tsquery import OrGroup, Term, build_tsquery, parse_user_query
 
 
 async def search(
@@ -53,9 +58,22 @@ async def search(
     if not query.strip():
         return []
 
-    # Step 1: Glossary expansion
-    expanded = await expand_query(conn, query, project_id)
-    tsquery_str = build_tsquery(expanded)
+    # Step 1: Parse the user dialect, expand only eligible tokens.
+    clauses = parse_user_query(query)
+    if not clauses:
+        return []
+
+    expandable: list[str] = []
+    for clause in clauses:
+        if isinstance(clause, Term) and not clause.phrase and not clause.negated:
+            expandable.append(clause.text)
+        elif isinstance(clause, OrGroup):
+            for m in clause.members:
+                if not m.phrase and not m.negated:
+                    expandable.append(m.text)
+
+    glossary_map = await fetch_glossary_map(conn, expandable, project_id)
+    tsquery_str = build_tsquery(clauses, glossary_map)
     if not tsquery_str:
         return []
 

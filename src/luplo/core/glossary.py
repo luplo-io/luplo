@@ -479,30 +479,79 @@ async def split_term(
 # ── Query expansion ──────────────────────────────────────────────
 
 
+async def fetch_glossary_map(
+    conn: AsyncConnection[Any],
+    words: list[str],
+    project_id: str,
+) -> dict[str, list[str]]:
+    """Look up glossary aliases for *words* in a single project.
+
+    Args:
+        conn: Async psycopg connection.
+        words: Lowercased words to look up.
+        project_id: Project scope for glossary lookup.
+
+    Returns:
+        Mapping ``lowercased_word → [surface1, surface2, ...]``. Missing
+        keys (no glossary hit) are simply absent from the mapping. Each
+        value contains every approved surface in the matching group,
+        including the lookup word itself.
+    """
+    if not words:
+        return {}
+
+    normalised = [w.lower() for w in words]
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "SELECT gt.normalized, gt.group_id"
+            " FROM glossary_terms gt"
+            " JOIN glossary_groups gg ON gt.group_id = gg.id"
+            " WHERE gt.normalized = ANY(%(words)s)"
+            "   AND gt.status IN ('canonical', 'alias')"
+            "   AND gg.project_id = %(project_id)s",
+            {"words": normalised, "project_id": project_id},
+        )
+        word_to_group: dict[str, str] = {}
+        for row in await cur.fetchall():
+            word_to_group[row["normalized"]] = row["group_id"]
+
+    if not word_to_group:
+        return {}
+
+    group_ids = list(set(word_to_group.values()))
+    group_surfaces: dict[str, list[str]] = {}
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "SELECT group_id, surface FROM glossary_terms"
+            " WHERE group_id = ANY(%(ids)s)"
+            "   AND status IN ('canonical', 'alias')",
+            {"ids": group_ids},
+        )
+        for row in await cur.fetchall():
+            group_surfaces.setdefault(row["group_id"], []).append(row["surface"])
+
+    return {word: group_surfaces.get(gid, []) for word, gid in word_to_group.items()}
+
+
 async def expand_query(
     conn: AsyncConnection[Any],
     query: str,
     project_id: str,
 ) -> str:
-    """Expand a search query using the glossary.
+    """Expand a search query using the glossary (legacy, plain-word only).
 
-    Each word in *query* is looked up in approved glossary terms.  If a
-    match is found, all approved surface forms in the same group are
-    OR'd together.  Unmatched words pass through unchanged.  Groups are
-    AND'd.
+    Each whitespace-delimited word in *query* is looked up; approved
+    aliases are OR'd, groups are AND'd. This helper predates the
+    web-search-style query dialect and does not understand phrases,
+    negations, or ``OR`` keywords — pipeline callers should parse with
+    :func:`luplo.core.search.tsquery.parse_user_query` and consult
+    :func:`fetch_glossary_map` directly. Kept for backwards compatibility
+    with any external caller.
 
     Example::
 
         >>> await expand_query(conn, "vendor budget", "proj-1")
         "(vendor | shop | NPC벤더) & budget"
-
-    Args:
-        conn: Async psycopg connection.
-        query: Raw user query string.
-        project_id: Project scope for glossary lookup.
-
-    Returns:
-        Expanded tsquery-compatible string.
     """
     words = query.strip().split()
     if not words:

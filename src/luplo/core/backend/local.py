@@ -893,6 +893,53 @@ class LocalBackend:
             )
             return refreshed
 
+    async def suggest_decision_from_task(
+        self,
+        task_id: str,
+        *,
+        project_id: str | None = None,
+    ) -> ItemCreate | None:
+        async with self.pool.connection() as conn:
+            return await tasks.suggest_decision_from_task(conn, task_id, project_id=project_id)
+
+    async def edit_task(
+        self,
+        task_id: str,
+        *,
+        actor_id: str,
+        title: str | None = None,
+        body: str | None = None,
+        sort_order: int | None = None,
+        project_id: str | None = None,
+    ) -> Item:
+        async with self.pool.connection() as conn:
+            new = await tasks.edit_task(
+                conn,
+                task_id,
+                actor_id=actor_id,
+                title=title,
+                body=body,
+                sort_order=sort_order,
+                project_id=project_id,
+            )
+            await audit.record_audit(
+                conn,
+                actor_id=actor_id,
+                action="item.update",
+                target_type="item",
+                target_id=new.id,
+                metadata={
+                    "trigger": "task_edit",
+                    "domain": "task",
+                    "fields": [
+                        f
+                        for f, v in [("title", title), ("body", body), ("sort_order", sort_order)]
+                        if v is not None
+                    ],
+                },
+            )
+            return new
+
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 
     async def create_qa(

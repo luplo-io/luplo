@@ -143,6 +143,29 @@ class Backend(Protocol):
         project_id: str | None = None,
     ) -> list[Item]: ...
 
+    async def edit_task(
+        self,
+        task_id: str,
+        *,
+        actor_id: str,
+        title: str | None = None,
+        body: str | None = None,
+        sort_order: int | None = None,
+        project_id: str | None = None,
+    ) -> Item: ...
+
+    async def suggest_decision_from_task(
+        self,
+        task_id: str,
+        *,
+        project_id: str | None = None,
+    ) -> ItemCreate | None:
+        """Build (never insert) a decision-item draft derived from a task.
+
+        Returns ``None`` when the task lacks body/summary content.
+        """
+        ...
+
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 
     async def create_qa(
