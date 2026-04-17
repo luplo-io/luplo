@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="luplo",
-    description="Long-term memory for engineering decisions.",
+    description="AI memory that survives across sessions, teammates, and vendors.",
     version="0.0.1",
     lifespan=lifespan,
 )

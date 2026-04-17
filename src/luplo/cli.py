@@ -22,6 +22,7 @@ import typer
 from luplo.config import CONFIG_FILENAME, load_config, write_config
 from luplo.core.backend.local import LocalBackend
 from luplo.core.db import close_pool, create_pool
+from luplo.core.impact import ImpactNode, ImpactResult
 from luplo.core.models import ItemCreate
 
 KEYRING_SERVICE = "luplo"
@@ -140,14 +141,16 @@ async def _backend() -> AsyncIterator[LocalBackend]:
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run an async coroutine from sync typer commands.
 
-    Translates ID-resolution errors raised from the core layer into
-    actionable messages and a non-zero exit code, so the user sees
-    something useful instead of a stack trace.
+    Translates domain errors raised from the core layer (ambiguous /
+    malformed IDs, not-found rows) into actionable messages and a
+    non-zero exit code, so the user sees something useful instead of a
+    stack trace.
     """
     from luplo.core.errors import (
         AmbiguousIdError,
         IdTooShortError,
         InvalidIdFormatError,
+        NotFoundError,
     )
 
     try:
@@ -163,6 +166,9 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     except InvalidIdFormatError as exc:
         typer.echo(f"Error: {exc.message}", err=True)
         raise typer.Exit(2) from exc
+    except NotFoundError as exc:
+        typer.echo(f"Error: {exc.message}", err=True)
+        raise typer.Exit(1) from exc
 
 
 # ── Init ─────────────────────────────────────────────────────────
@@ -684,6 +690,131 @@ def brief(
     _run(_do())
 
 
+# ── Impact ───────────────────────────────────────────────────────
+
+
+def _render_impact_tree(result: ImpactResult) -> str:
+    """Render an ImpactResult as a connected tree of box-drawing characters."""
+    children: dict[str, list[ImpactNode]] = {}
+    for node in result.nodes:
+        children.setdefault(node.via.parent_id, []).append(node)
+
+    lines: list[str] = [f"[{result.root.id[:8]}] {result.root.title}"]
+
+    def _walk(parent_id: str, prefix: str) -> None:
+        siblings = children.get(parent_id, [])
+        for i, node in enumerate(siblings):
+            is_last = i == len(siblings) - 1
+            branch = "└── " if is_last else "├── "
+            lines.append(
+                f"{prefix}{branch}[{node.item.id[:8]}] ({node.via.link_type}) {node.item.title}"
+            )
+            extension = "    " if is_last else "│   "
+            _walk(node.item.id, prefix + extension)
+
+    _walk(result.root.id, "")
+    return "\n".join(lines)
+
+
+def _render_impact_flat(result: ImpactResult) -> str:
+    lines: list[str] = [f"[{result.root.id[:8]}] {result.root.title}"]
+    for node in result.nodes:
+        indent = "  " * node.depth
+        lines.append(
+            f"{indent}[{node.item.id[:8]}] ({node.via.link_type}) "
+            f"{node.item.title}  (depth={node.depth})"
+        )
+    return "\n".join(lines)
+
+
+def _render_impact_json(result: ImpactResult) -> str:
+    import dataclasses
+    import json
+    from datetime import datetime
+    from typing import cast
+
+    def _asdict(obj: Any) -> Any:
+        if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+            return {f.name: _asdict(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
+        if isinstance(obj, list):
+            return [_asdict(x) for x in cast("list[Any]", obj)]
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return obj
+
+    return json.dumps(_asdict(result), indent=2, default=str)
+
+
+@app.command("impact")
+def impact_cmd(
+    item_id: str = typer.Argument(
+        ...,
+        help="Root item (full UUID or 8+ char hex prefix).",
+    ),
+    depth: int = typer.Option(
+        5,
+        "--depth",
+        "-d",
+        min=1,
+        max=5,
+        help="Maximum traversal depth (1-5, capped at 5 server-side).",
+    ),
+    output_format: str = typer.Option(
+        "tree",
+        "--format",
+        "-f",
+        help="Output format: tree | flat | json.",
+    ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+) -> None:
+    """Traverse typed edges to find an item's blast radius.
+
+    Walks outgoing ``depends`` / ``blocks`` / ``supersedes`` / ``conflicts``
+    edges up to the given depth and prints every item reachable from the
+    root. Cycles are broken automatically; each item appears once, at its
+    shortest-path depth.
+
+    \b
+    Examples:
+        lp impact 5d4b04c4
+        lp impact 5d4b04c4 --depth 2
+        lp impact 5d4b04c4 --format json
+    """
+    from luplo.core.errors import NotFoundError, ValidationError
+
+    if output_format not in {"tree", "flat", "json"}:
+        typer.echo(f"Error: unknown --format {output_format!r}.", err=True)
+        raise typer.Exit(2)
+
+    pid = _cfg_project(project)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            try:
+                result = await b.impact(item_id, pid, depth=depth)
+            except NotFoundError as exc:
+                typer.echo(f"Error: {exc.message}", err=True)
+                raise typer.Exit(1) from exc
+            except ValidationError as exc:
+                typer.echo(f"Error: {exc.message}", err=True)
+                raise typer.Exit(2) from exc
+
+        if output_format == "json":
+            typer.echo(_render_impact_json(result))
+        elif output_format == "flat":
+            typer.echo(_render_impact_flat(result))
+        else:
+            typer.echo(_render_impact_tree(result))
+
+        if not result.nodes:
+            typer.echo(
+                f"\nNo impact edges from [{result.root.id[:8]}] at depth ≤ {depth}.",
+                err=True,
+            )
+
+    _run(_do())
+
+
 # ── Worker ───────────────────────────────────────────────────────
 
 
@@ -804,12 +935,13 @@ def task_start(
 ) -> None:
     """Transition task to 'in_progress' (enforces 1 in_progress per WU)."""
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
     from luplo.core.errors import TaskAlreadyInProgressError
 
     async def _do() -> None:
         async with _backend() as b:
             try:
-                t = await b.start_task(task_id, actor_id=aid)
+                t = await b.start_task(task_id, actor_id=aid, project_id=pid)
             except TaskAlreadyInProgressError as e:
                 typer.echo(f"Error: {e.message}", err=True)
                 raise typer.Exit(1) from e
@@ -826,10 +958,11 @@ def task_done(
 ) -> None:
     """Transition task to 'done'."""
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            t = await b.complete_task(task_id, actor_id=aid, summary=summary)
+            t = await b.complete_task(task_id, actor_id=aid, summary=summary, project_id=pid)
             _print_task(t)
 
     _run(_do())
@@ -843,10 +976,11 @@ def task_blocked(
 ) -> None:
     """Transition task to 'blocked' (auto-creates a decision item)."""
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            t = await b.block_task(task_id, actor_id=aid, reason=reason)
+            t = await b.block_task(task_id, actor_id=aid, reason=reason, project_id=pid)
             _print_task(t)
             typer.echo("  (auto-created decision item — see `lp items list --type decision`)")
 
@@ -861,10 +995,11 @@ def task_skip(
 ) -> None:
     """Transition task to 'skipped' (terminal)."""
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            t = await b.skip_task(task_id, actor_id=aid, reason=reason)
+            t = await b.skip_task(task_id, actor_id=aid, reason=reason, project_id=pid)
             _print_task(t)
 
     _run(_do())
@@ -878,10 +1013,11 @@ def task_reorder(
 ) -> None:
     """Reorder tasks (in-place sort_order update — P10)."""
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            rows = await b.reorder_tasks(work_unit, task_ids, actor_id=aid)
+            rows = await b.reorder_tasks(work_unit, task_ids, actor_id=aid, project_id=pid)
             for r in rows:
                 _print_task(r)
 
@@ -1011,10 +1147,11 @@ def qa_start(
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            q = await b.start_qa(qa_id, actor_id=aid)
+            q = await b.start_qa(qa_id, actor_id=aid, project_id=pid)
             _print_qa(q)
 
     _run(_do())
@@ -1027,10 +1164,11 @@ def qa_pass(
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            q = await b.pass_qa(qa_id, actor_id=aid, evidence=evidence)
+            q = await b.pass_qa(qa_id, actor_id=aid, evidence=evidence, project_id=pid)
             _print_qa(q)
 
     _run(_do())
@@ -1043,10 +1181,11 @@ def qa_fail(
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            q = await b.fail_qa(qa_id, actor_id=aid, reason=reason)
+            q = await b.fail_qa(qa_id, actor_id=aid, reason=reason, project_id=pid)
             _print_qa(q)
 
     _run(_do())
@@ -1059,10 +1198,11 @@ def qa_block(
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            q = await b.block_qa(qa_id, actor_id=aid, reason=reason)
+            q = await b.block_qa(qa_id, actor_id=aid, reason=reason, project_id=pid)
             _print_qa(q)
 
     _run(_do())
@@ -1075,10 +1215,11 @@ def qa_assign(
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
     aid = _cfg_actor(actor)
+    pid = _cfg_project(None)
 
     async def _do() -> None:
         async with _backend() as b:
-            q = await b.assign_qa(qa_id, actor_id=aid, assignee_actor_id=assignee)
+            q = await b.assign_qa(qa_id, actor_id=aid, assignee_actor_id=assignee, project_id=pid)
             _print_qa(q)
 
     _run(_do())

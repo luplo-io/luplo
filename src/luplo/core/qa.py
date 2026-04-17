@@ -253,8 +253,14 @@ async def _supersede_with_context(
     )
 
 
-async def start_qa(conn: AsyncConnection[Any], qa_id: str, *, actor_id: str) -> Item:
-    head = await _resolve_head(conn, qa_id)
+async def start_qa(
+    conn: AsyncConnection[Any],
+    qa_id: str,
+    *,
+    actor_id: str,
+    project_id: str | None = None,
+) -> Item:
+    head = await _resolve_head(conn, qa_id, project_id=project_id)
     _check_transition(head.id, head.context.get("status", ""), "in_progress")
     new_context = {**head.context, "status": "in_progress"}
     return await _supersede_with_context(conn, head, new_context, actor_id)
@@ -266,8 +272,9 @@ async def pass_qa(
     *,
     actor_id: str,
     evidence: str | None = None,
+    project_id: str | None = None,
 ) -> Item:
-    head = await _resolve_head(conn, qa_id)
+    head = await _resolve_head(conn, qa_id, project_id=project_id)
     _check_transition(head.id, head.context.get("status", ""), "passed")
     from datetime import UTC, datetime
 
@@ -284,8 +291,9 @@ async def fail_qa(
     *,
     actor_id: str,
     reason: str,
+    project_id: str | None = None,
 ) -> Item:
-    head = await _resolve_head(conn, qa_id)
+    head = await _resolve_head(conn, qa_id, project_id=project_id)
     _check_transition(head.id, head.context.get("status", ""), "failed")
     new_context = {**head.context, "status": "failed", "fail_reason": reason}
     return await _supersede_with_context(conn, head, new_context, actor_id)
@@ -297,8 +305,9 @@ async def block_qa(
     *,
     actor_id: str,
     reason: str,
+    project_id: str | None = None,
 ) -> Item:
-    head = await _resolve_head(conn, qa_id)
+    head = await _resolve_head(conn, qa_id, project_id=project_id)
     _check_transition(head.id, head.context.get("status", ""), "blocked")
     new_context = {**head.context, "status": "blocked", "blocked_reason": reason}
     return await _supersede_with_context(conn, head, new_context, actor_id)
@@ -309,8 +318,9 @@ async def skip_qa(
     qa_id: str,
     *,
     actor_id: str,
+    project_id: str | None = None,
 ) -> Item:
-    head = await _resolve_head(conn, qa_id)
+    head = await _resolve_head(conn, qa_id, project_id=project_id)
     _check_transition(head.id, head.context.get("status", ""), "skipped")
     new_context = {**head.context, "status": "skipped"}
     return await _supersede_with_context(conn, head, new_context, actor_id)
@@ -322,9 +332,10 @@ async def assign_qa(
     *,
     actor_id: str,
     assignee_actor_id: str,
+    project_id: str | None = None,
 ) -> Item:
     """Assign a qa_check to *assignee_actor_id*. ``actor_id`` ≠ assignee
     by design (the actor performing the assignment is rarely the assignee)."""
-    head = await _resolve_head(conn, qa_id)
+    head = await _resolve_head(conn, qa_id, project_id=project_id)
     new_context = {**head.context, "assignee": assignee_actor_id}
     return await _supersede_with_context(conn, head, new_context, actor_id)

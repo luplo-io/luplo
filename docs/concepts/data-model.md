@@ -107,9 +107,14 @@ Key columns shared across every item type:
 
 ### Supersede chain
 
+> **Decisions are immutable. They get superseded, never edited. Your
+> mistakes are your most valuable data.**
+
 Edits **never mutate** an existing row. `update_item` writes a new row
 with `supersedes_id` pointing at the previous head. Readers follow the
-chain to the current head; auditors walk it backwards.
+chain to the current head; auditors walk it backwards. The principle:
+a wrong decision teaches more than a right one — overwriting it destroys
+the lesson.
 
 Two deliberate exceptions where luplo **updates in place with an audit
 entry** instead of creating a new row:

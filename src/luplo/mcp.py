@@ -344,6 +344,64 @@ async def luplo_item_search(
     return "\n".join(lines)
 
 
+@mcp.tool()
+async def luplo_impact(
+    item_id: str,
+    project_id: str,
+    depth: int = 5,
+) -> str:
+    """Traverse typed edges to find an item's blast radius.
+
+    Walks outgoing ``depends`` / ``blocks`` / ``supersedes`` / ``conflicts``
+    edges from the given item up to *depth* hops and returns every reachable
+    item, each labelled with the edge type that first reached it at its
+    shortest-path depth. Traversal never crosses project boundaries; cycles
+    are broken automatically; items appear once.
+
+    Depth is capped at 5 server-side. Requesting deeper is not supported
+    and is not a performance limit — it reflects a model-hygiene principle.
+    If impact analysis needs more than five hops, the model should be
+    decomposed.
+
+    Args:
+        item_id: Full UUID or 8+ char hex prefix of the root item.
+        project_id: Project scope. Impact is project-local.
+        depth: Max traversal depth, 1..5. Default 5.
+
+    Returns:
+        Markdown text listing the root and each impacted item with its
+        depth and edge type. Item IDs are 8-char prefixes suitable for
+        citing back in follow-up tool calls.
+    """
+    from luplo.core.errors import NotFoundError, ValidationError
+
+    b = await _get_backend()
+    try:
+        result = await b.impact(item_id, project_id, depth=depth)
+    except NotFoundError as exc:
+        return f"Error: {exc.message}"
+    except ValidationError as exc:
+        return f"Error: {exc.message}"
+
+    if not result.nodes:
+        return (
+            f"[{result.root.id[:8]}] {result.root.title}\n"
+            f"No impact edges at depth ≤ {result.depth_requested}."
+        )
+
+    lines = [
+        f"[{result.root.id[:8]}] {result.root.title}",
+        f"{len(result.nodes)} impacted item(s) within depth {result.depth_requested}:",
+    ]
+    for node in result.nodes:
+        lines.append(
+            f"- depth={node.depth} via={node.via.link_type} "
+            f"parent=[{node.via.parent_id[:8]}] "
+            f"[{node.item.id[:8]}] {node.item.title}"
+        )
+    return "\n".join(lines)
+
+
 # ── Brief ────────────────────────────────────────────────────────
 
 
@@ -446,13 +504,22 @@ async def luplo_task_list(
 
 
 @mcp.tool()
-async def luplo_task_start(task_id: str, actor_id: str = "claude") -> str:
-    """Transition a task to 'in_progress'. Fails if another task is in_progress."""
+async def luplo_task_start(task_id: str, actor_id: str = "claude", project_id: str = "") -> str:
+    """Transition a task to 'in_progress'. Fails if another task is in_progress.
+
+    Pass *project_id* (the active project) whenever it is known. It scopes
+    prefix resolution so a short ``task_id`` prefix cannot accidentally
+    match a task in a different project.
+    """
     from luplo.core.errors import TaskAlreadyInProgressError, TaskNotFoundError
 
     b = await _get_backend()
     try:
-        t = await b.start_task(task_id, actor_id=_resolve_actor(actor_id))
+        t = await b.start_task(
+            task_id,
+            actor_id=_resolve_actor(actor_id),
+            project_id=project_id or None,
+        )
     except TaskAlreadyInProgressError as e:
         return f"Error: {e.message}"
     except TaskNotFoundError as e:
@@ -465,13 +532,18 @@ async def luplo_task_done(
     task_id: str,
     summary: str = "",
     actor_id: str = "claude",
+    project_id: str = "",
 ) -> str:
-    """Transition a task to 'done'."""
+    """Transition a task to 'done'.
+
+    Pass *project_id* to scope prefix resolution.
+    """
     b = await _get_backend()
     t = await b.complete_task(
         task_id,
         actor_id=_resolve_actor(actor_id),
         summary=summary or None,
+        project_id=project_id or None,
     )
     return f"Completed task: {t.title} (new id: {t.id})"
 
@@ -481,13 +553,18 @@ async def luplo_task_block(
     task_id: str,
     reason: str,
     actor_id: str = "claude",
+    project_id: str = "",
 ) -> str:
-    """Transition a task to 'blocked'. Auto-creates a decision item."""
+    """Transition a task to 'blocked'. Auto-creates a decision item.
+
+    Pass *project_id* to scope prefix resolution.
+    """
     b = await _get_backend()
     t = await b.block_task(
         task_id,
         actor_id=_resolve_actor(actor_id),
         reason=reason,
+        project_id=project_id or None,
     )
     return (
         f"Blocked task: {t.title} (new id: {t.id}). Auto-created a decision item with the reason."
@@ -528,13 +605,18 @@ async def luplo_qa_pass(
     qa_id: str,
     evidence: str = "",
     actor_id: str = "claude",
+    project_id: str = "",
 ) -> str:
-    """Transition a qa_check to 'passed' with optional evidence."""
+    """Transition a qa_check to 'passed' with optional evidence.
+
+    Pass *project_id* to scope prefix resolution.
+    """
     b = await _get_backend()
     q = await b.pass_qa(
         qa_id,
         actor_id=_resolve_actor(actor_id),
         evidence=evidence or None,
+        project_id=project_id or None,
     )
     return f"Passed qa_check: {q.title} (new id: {q.id})"
 
@@ -544,10 +626,19 @@ async def luplo_qa_fail(
     qa_id: str,
     reason: str,
     actor_id: str = "claude",
+    project_id: str = "",
 ) -> str:
-    """Transition a qa_check to 'failed'."""
+    """Transition a qa_check to 'failed'.
+
+    Pass *project_id* to scope prefix resolution.
+    """
     b = await _get_backend()
-    q = await b.fail_qa(qa_id, actor_id=_resolve_actor(actor_id), reason=reason)
+    q = await b.fail_qa(
+        qa_id,
+        actor_id=_resolve_actor(actor_id),
+        reason=reason,
+        project_id=project_id or None,
+    )
     return f"Failed qa_check: {q.title} (new id: {q.id}, reason: {reason})"
 
 

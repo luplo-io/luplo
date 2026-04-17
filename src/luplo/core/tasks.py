@@ -257,6 +257,7 @@ async def start_task(
     task_id: str,
     *,
     actor_id: str,
+    project_id: str | None = None,
 ) -> Item:
     """Transition a task to ``in_progress``.
 
@@ -264,10 +265,14 @@ async def start_task(
     the domain layer (no DB UNIQUE) by taking a row-level lock on any
     candidate in_progress heads in the same work unit.
 
+    Passing *project_id* scopes prefix resolution to a single project, so
+    an ``abc12345`` prefix that happens to match a task in a different
+    project can never silently mutate that other row.
+
     Raises:
         TaskNotFoundError, TaskStateTransitionError, TaskAlreadyInProgressError.
     """
-    head = await _resolve_head(conn, task_id)
+    head = await _resolve_head(conn, task_id, project_id=project_id)
     current_status = head.context.get("status", "proposed")
     _check_transition(head.id, current_status, "in_progress")
 
@@ -302,9 +307,13 @@ async def complete_task(
     *,
     actor_id: str,
     summary: str | None = None,
+    project_id: str | None = None,
 ) -> Item:
-    """Transition a task to ``done``."""
-    head = await _resolve_head(conn, task_id)
+    """Transition a task to ``done``.
+
+    Pass *project_id* to scope prefix resolution to a single project.
+    """
+    head = await _resolve_head(conn, task_id, project_id=project_id)
     _check_transition(head.id, head.context.get("status", ""), "done")
     new_context = {**head.context, "status": "done"}
     if summary:
@@ -318,13 +327,15 @@ async def block_task(
     *,
     actor_id: str,
     reason: str,
+    project_id: str | None = None,
 ) -> Item:
     """Transition a task to ``blocked`` with a reason.
 
     The associated decision item is created by ``LocalBackend.block_task``
-    (cross-cutting), not here.
+    (cross-cutting), not here. Pass *project_id* to scope prefix
+    resolution to a single project.
     """
-    head = await _resolve_head(conn, task_id)
+    head = await _resolve_head(conn, task_id, project_id=project_id)
     _check_transition(head.id, head.context.get("status", ""), "blocked")
     new_context = {**head.context, "status": "blocked", "blocked_reason": reason}
     return await _supersede_with_context(conn, head, new_context, actor_id)
@@ -336,9 +347,13 @@ async def skip_task(
     *,
     actor_id: str,
     reason: str | None = None,
+    project_id: str | None = None,
 ) -> Item:
-    """Transition a task to ``skipped``."""
-    head = await _resolve_head(conn, task_id)
+    """Transition a task to ``skipped``.
+
+    Pass *project_id* to scope prefix resolution to a single project.
+    """
+    head = await _resolve_head(conn, task_id, project_id=project_id)
     _check_transition(head.id, head.context.get("status", ""), "skipped")
     new_context = {**head.context, "status": "skipped"}
     if reason:
@@ -355,6 +370,7 @@ async def reorder_tasks(
     task_ids: list[str],
     *,
     actor_id: str,
+    project_id: str | None = None,
 ) -> list[Item]:
     """Set sort_order for a list of tasks (gap-10 strategy).
 
@@ -374,7 +390,7 @@ async def reorder_tasks(
 
     heads: list[Item] = []
     for tid in task_ids:
-        head = await _resolve_head(conn, tid)
+        head = await _resolve_head(conn, tid, project_id=project_id)
         if head.work_unit_id != work_unit_id:
             raise TaskNotFoundError(tid)
         heads.append(head)

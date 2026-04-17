@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 
+from luplo.core.impact import ImpactEdge, ImpactNode, ImpactResult
 from luplo.core.models import (
     Item,
     ItemCreate,
@@ -126,6 +127,22 @@ class RemoteBackend:
         resp = await self._client.delete(f"/items/{id}")
         resp.raise_for_status()
 
+    # ── Impact ───────────────────────────────────────────────────
+
+    async def impact(
+        self,
+        item_id: str,
+        project_id: str,
+        *,
+        depth: int = 5,
+    ) -> ImpactResult:
+        resp = await self._client.get(
+            f"/items/{item_id}/impact",
+            params={"project_id": project_id, "depth": depth},
+        )
+        resp.raise_for_status()
+        return _parse_impact(resp.json())
+
     # ── Search ───────────────────────────────────────────────────
 
     async def search(
@@ -238,6 +255,31 @@ def _parse_work_unit(d: dict[str, Any]) -> WorkUnit:
         created_at=datetime.fromisoformat(d["created_at"]),
         closed_at=datetime.fromisoformat(d["closed_at"]) if d.get("closed_at") else None,
         closed_by=d.get("closed_by"),
+    )
+
+
+def _parse_impact(d: dict[str, Any]) -> ImpactResult:
+    root = _parse_item(d["root"])
+    nodes: list[ImpactNode] = []
+    for n in d.get("nodes", []):
+        via_d = n["via"]
+        edge = ImpactEdge(
+            parent_id=via_d["parent_id"],
+            child_id=via_d["child_id"],
+            link_type=via_d["link_type"],
+            depth=via_d["depth"],
+        )
+        nodes.append(
+            ImpactNode(
+                item=_parse_item(n["item"]),
+                depth=n["depth"],
+                via=edge,
+            )
+        )
+    return ImpactResult(
+        root=root,
+        nodes=nodes,
+        depth_requested=d["depth_requested"],
     )
 
 

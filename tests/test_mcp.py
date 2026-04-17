@@ -18,6 +18,7 @@ def test_mcp_tools_registered() -> None:
         "luplo_work_close",
         "luplo_item_upsert",
         "luplo_item_search",
+        "luplo_impact",
         "luplo_brief",
         "luplo_page_sync",
         "luplo_history_query",
@@ -40,4 +41,4 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 18
+    assert len(tools) == 19

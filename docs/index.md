@@ -1,6 +1,6 @@
 # luplo
 
-**Long-term memory for engineering decisions.**
+**AI memory that survives across sessions, teammates, and vendors.**
 
 luplo is a CLI + MCP server + HTTP server for tracking decisions,
 knowledge, policies, documents, tasks, and QA checks across coding

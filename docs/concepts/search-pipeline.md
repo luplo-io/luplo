@@ -1,5 +1,7 @@
 # Search pipeline
 
+> **Full-text first. Vectors only rerank. If it's not there, we say so.**
+
 luplo's search is deliberately unromantic. It is a four-stage pipeline
 where Postgres `tsquery` does the retrieving, the glossary does the
 rewriting, and vectors — when present — only re-order the candidates

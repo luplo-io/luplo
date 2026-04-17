@@ -3,9 +3,11 @@
 Explanation-oriented pages. Read these before the guides if you want to
 understand *why* luplo behaves the way it does.
 
-- {doc}`philosophy` — the three commitments (tool-not-framework,
-  augment-not-replace, honesty-over-coverage) and the list of features
-  luplo refuses to build.
+- {doc}`philosophy` — the five refusals (vectors-don't-lead, five-hop,
+  decisions-immutable, typed-and-bounded edges, not-a-general-memory)
+  and the three operational commitments that enforce them.
+- {doc}`positioning` — how luplo differs from generic AI-memory tools
+  on eight axes, and when it is (or isn't) the right tool.
 - {doc}`architecture` — the three interfaces (CLI / MCP / HTTP) sharing
   one core, the Backend protocol, and the worker.
 - {doc}`data-model` — the twelve tables, `items` as substrate, and the
@@ -18,6 +20,7 @@ understand *why* luplo behaves the way it does.
 :maxdepth: 1
 
 philosophy
+positioning
 architecture
 data-model
 search-pipeline

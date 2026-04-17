@@ -1,7 +1,7 @@
 [project]
 name = "luplo"
 version = "0.1.0"
-description = "Long-term memory for engineering decisions."
+description = "AI memory that survives across sessions, teammates, and vendors."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }

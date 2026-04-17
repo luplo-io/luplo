@@ -8,6 +8,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from luplo.core.errors import NotFoundError, ValidationError
+from luplo.core.impact import MAX_IMPACT_DEPTH, ImpactResult
 from luplo.server.auth.deps import CurrentActor, get_current_actor
 
 router = APIRouter()
@@ -117,3 +119,51 @@ async def delete_item(
 ) -> None:
     b = request.app.state.backend
     await b.delete_item(item_id, actor_id=actor.id)
+
+
+def _serialize_impact(result: ImpactResult) -> dict[str, Any]:
+    return {
+        "root": _serialize(result.root),
+        "nodes": [
+            {
+                "item": _serialize(n.item),
+                "depth": n.depth,
+                "via": {
+                    "parent_id": n.via.parent_id,
+                    "child_id": n.via.child_id,
+                    "link_type": n.via.link_type,
+                    "depth": n.via.depth,
+                },
+            }
+            for n in result.nodes
+        ],
+        "depth_requested": result.depth_requested,
+    }
+
+
+@router.get("/{item_id}/impact")
+async def get_item_impact(
+    item_id: str,
+    request: Request,
+    project_id: str = Query(...),
+    depth: int = Query(MAX_IMPACT_DEPTH, ge=1, le=MAX_IMPACT_DEPTH),
+) -> dict[str, Any]:
+    """Return the blast radius of *item_id* up to *depth* hops.
+
+    Follows the same auth policy as ``GET /items/{item_id}`` and
+    ``GET /items`` — reads are unauthenticated when the Remote server is
+    running with ``LUPLO_AUTH_DISABLED``, and gated by the configured
+    auth middleware otherwise. Writes (POST/DELETE) always require
+    ``get_current_actor``.
+
+    ``depth`` is validated 1..5 by FastAPI; values outside that range
+    return 422 before the handler runs.
+    """
+    b = request.app.state.backend
+    try:
+        result = await b.impact(item_id, project_id, depth=depth)
+    except NotFoundError as e:
+        raise HTTPException(404, e.message) from e
+    except ValidationError as e:
+        raise HTTPException(400, e.message) from e
+    return _serialize_impact(result)

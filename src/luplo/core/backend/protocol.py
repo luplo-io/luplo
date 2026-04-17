@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Protocol
 
+from luplo.core.impact import ImpactResult
 from luplo.core.models import (
     Actor,
     GlossaryGroup,
@@ -102,16 +103,35 @@ class Backend(Protocol):
 
     async def get_in_progress_task(self, work_unit_id: str) -> Item | None: ...
 
-    async def start_task(self, task_id: str, *, actor_id: str) -> Item: ...
-
-    async def complete_task(
-        self, task_id: str, *, actor_id: str, summary: str | None = None
+    async def start_task(
+        self, task_id: str, *, actor_id: str, project_id: str | None = None
     ) -> Item: ...
 
-    async def block_task(self, task_id: str, *, actor_id: str, reason: str) -> Item: ...
+    async def complete_task(
+        self,
+        task_id: str,
+        *,
+        actor_id: str,
+        summary: str | None = None,
+        project_id: str | None = None,
+    ) -> Item: ...
+
+    async def block_task(
+        self,
+        task_id: str,
+        *,
+        actor_id: str,
+        reason: str,
+        project_id: str | None = None,
+    ) -> Item: ...
 
     async def skip_task(
-        self, task_id: str, *, actor_id: str, reason: str | None = None
+        self,
+        task_id: str,
+        *,
+        actor_id: str,
+        reason: str | None = None,
+        project_id: str | None = None,
     ) -> Item: ...
 
     async def reorder_tasks(
@@ -120,6 +140,7 @@ class Backend(Protocol):
         task_ids: list[str],
         *,
         actor_id: str,
+        project_id: str | None = None,
     ) -> list[Item]: ...
 
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
@@ -160,17 +181,49 @@ class Backend(Protocol):
 
     async def list_pending_qa_for_wu(self, work_unit_id: str) -> list[Item]: ...
 
-    async def start_qa(self, qa_id: str, *, actor_id: str) -> Item: ...
+    async def start_qa(
+        self, qa_id: str, *, actor_id: str, project_id: str | None = None
+    ) -> Item: ...
 
-    async def pass_qa(self, qa_id: str, *, actor_id: str, evidence: str | None = None) -> Item: ...
+    async def pass_qa(
+        self,
+        qa_id: str,
+        *,
+        actor_id: str,
+        evidence: str | None = None,
+        project_id: str | None = None,
+    ) -> Item: ...
 
-    async def fail_qa(self, qa_id: str, *, actor_id: str, reason: str) -> Item: ...
+    async def fail_qa(
+        self,
+        qa_id: str,
+        *,
+        actor_id: str,
+        reason: str,
+        project_id: str | None = None,
+    ) -> Item: ...
 
-    async def block_qa(self, qa_id: str, *, actor_id: str, reason: str) -> Item: ...
+    async def block_qa(
+        self,
+        qa_id: str,
+        *,
+        actor_id: str,
+        reason: str,
+        project_id: str | None = None,
+    ) -> Item: ...
 
-    async def skip_qa(self, qa_id: str, *, actor_id: str) -> Item: ...
+    async def skip_qa(
+        self, qa_id: str, *, actor_id: str, project_id: str | None = None
+    ) -> Item: ...
 
-    async def assign_qa(self, qa_id: str, *, actor_id: str, assignee_actor_id: str) -> Item: ...
+    async def assign_qa(
+        self,
+        qa_id: str,
+        *,
+        actor_id: str,
+        assignee_actor_id: str,
+        project_id: str | None = None,
+    ) -> Item: ...
 
     # ── Work Units ───────────────────────────────────────────────
 
@@ -305,6 +358,18 @@ class Backend(Protocol):
         to_item_id: str,
         link_type: str,
     ) -> None: ...
+
+    # ── Impact ───────────────────────────────────────────────────
+
+    async def impact(
+        self,
+        item_id: str,
+        project_id: str,
+        *,
+        depth: int = 5,
+    ) -> ImpactResult:
+        """Traverse outgoing typed edges to find the item's blast radius."""
+        ...
 
     # ── Search ───────────────────────────────────────────────────
 

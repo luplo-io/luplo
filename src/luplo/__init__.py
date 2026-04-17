@@ -1,3 +1,3 @@
-"""luplo — Long-term memory for engineering decisions."""
+"""luplo — AI memory that survives across sessions, teammates, and vendors."""
 
 __version__ = "0.0.1"
