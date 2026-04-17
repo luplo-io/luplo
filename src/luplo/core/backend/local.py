@@ -190,7 +190,9 @@ class LocalBackend:
         async with self.pool.connection() as conn:
             return await work_units.list_work_units(conn, project_id, status=status)
 
-    async def close_work_unit(self, id: str, *, actor_id: str, force: bool = False) -> WorkUnit:
+    async def close_work_unit(
+        self, id: str, *, actor_id: str, force: bool = False
+    ) -> WorkUnit | None:
         async with self.pool.connection() as conn:
             # Gate: refuse close when an in_progress task is alive (P7's
             # "domain validation only" applied here too — no DB trigger).
@@ -201,7 +203,7 @@ class LocalBackend:
 
                     raise WorkUnitHasActiveTasksError(id, in_progress.id)
             result = await work_units.close_work_unit(conn, id, actor_id=actor_id)
-            if result:
+            if result is not None:
                 await audit.record_audit(
                     conn,
                     actor_id=actor_id,
@@ -210,7 +212,7 @@ class LocalBackend:
                     target_id=id,
                     metadata={"status": result.status, "force": force},
                 )
-            return result  # type: ignore[return-value]
+            return result
 
     # ── Systems ──────────────────────────────────────────────────
 
@@ -241,10 +243,9 @@ class LocalBackend:
         async with self.pool.connection() as conn:
             return await systems.list_systems(conn, project_id)
 
-    async def update_system(self, id: str, **kwargs: Any) -> System:
+    async def update_system(self, id: str, **kwargs: Any) -> System | None:
         async with self.pool.connection() as conn:
-            result = await systems.update_system(conn, id, **kwargs)
-            return result  # type: ignore[return-value]
+            return await systems.update_system(conn, id, **kwargs)
 
     # ── Items ────────────────────────────────────────────────────
 
@@ -541,7 +542,7 @@ class LocalBackend:
         group_id: str,
         actor_id: str,
         as_canonical: bool = False,
-    ) -> GlossaryTerm:
+    ) -> GlossaryTerm | None:
         async with self.pool.connection() as conn:
             result = await glossary.approve_term(
                 conn,
@@ -558,7 +559,7 @@ class LocalBackend:
                     target_type="glossary_term",
                     target_id=term_id,
                 )
-            return result  # type: ignore[return-value]
+            return result
 
     async def reject_term(
         self,
@@ -566,7 +567,7 @@ class LocalBackend:
         *,
         actor_id: str,
         reason: str | None = None,
-    ) -> GlossaryRejection:
+    ) -> GlossaryRejection | None:
         async with self.pool.connection() as conn:
             result = await glossary.reject_term(conn, term_id, actor_id=actor_id, reason=reason)
             await audit.record_audit(
@@ -576,7 +577,7 @@ class LocalBackend:
                 target_type="glossary_term",
                 target_id=term_id,
             )
-            return result  # type: ignore[return-value]
+            return result
 
     async def merge_groups(
         self,
@@ -584,12 +585,11 @@ class LocalBackend:
         target_group_id: str,
         *,
         actor_id: str,
-    ) -> GlossaryGroup:
+    ) -> GlossaryGroup | None:
         async with self.pool.connection() as conn:
-            result = await glossary.merge_groups(
+            return await glossary.merge_groups(
                 conn, source_group_id, target_group_id, actor_id=actor_id
             )
-            return result  # type: ignore[return-value]
 
     async def split_term(
         self,
@@ -597,12 +597,11 @@ class LocalBackend:
         *,
         new_canonical: str,
         actor_id: str,
-    ) -> GlossaryGroup:
+    ) -> GlossaryGroup | None:
         async with self.pool.connection() as conn:
-            result = await glossary.split_term(
+            return await glossary.split_term(
                 conn, term_id, new_canonical=new_canonical, actor_id=actor_id
             )
-            return result  # type: ignore[return-value]
 
     async def expand_query(self, query: str, project_id: str) -> str:
         async with self.pool.connection() as conn:

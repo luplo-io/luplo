@@ -203,11 +203,12 @@ class Backend(Protocol):
         *,
         actor_id: str,
         force: bool = False,
-    ) -> WorkUnit:
+    ) -> WorkUnit | None:
         """Sets status='done', closed_at=now(), closed_by=actor_id.
 
-        Refuses the close when an in_progress task remains and ``force``
-        is False (raises ``WorkUnitHasActiveTasksError``).
+        Returns ``None`` when the work unit does not exist.  Refuses the
+        close when an in_progress task remains and ``force`` is False
+        (raises ``WorkUnitHasActiveTasksError``).
         """
         ...
 
@@ -233,11 +234,14 @@ class Backend(Protocol):
         self,
         id: str,
         *,
-        description: str | None = ...,  # type: ignore[assignment]
-        depends_on_system_ids: list[str] | None = ...,  # type: ignore[assignment]
-        status: str | None = ...,  # type: ignore[assignment]
-    ) -> System:
-        """Only updates fields that are explicitly passed (not sentinel ...)."""
+        description: str | None = ...,
+        depends_on_system_ids: list[str] | None = ...,
+        status: str | None = ...,
+    ) -> System | None:
+        """Only updates fields that are explicitly passed (not sentinel ...).
+
+        Returns ``None`` when the system does not exist.
+        """
         ...
 
     # ── Items ────────────────────────────────────────────────────
@@ -373,8 +377,11 @@ class Backend(Protocol):
         group_id: str,
         actor_id: str,
         as_canonical: bool = False,
-    ) -> GlossaryTerm:
-        """Set status to 'canonical' (if as_canonical) or 'alias'."""
+    ) -> GlossaryTerm | None:
+        """Set status to 'canonical' (if as_canonical) or 'alias'.
+
+        Returns ``None`` when the term does not exist.
+        """
         ...
 
     async def reject_term(
@@ -383,9 +390,12 @@ class Backend(Protocol):
         *,
         actor_id: str,
         reason: str | None = None,
-    ) -> GlossaryRejection:
+    ) -> GlossaryRejection | None:
         """Sets term status='rejected' and inserts glossary_rejections row.
-        System will never re-propose this match."""
+        System will never re-propose this match.
+
+        Returns ``None`` when the term does not exist.
+        """
         ...
 
     async def merge_groups(
@@ -394,8 +404,11 @@ class Backend(Protocol):
         target_group_id: str,
         *,
         actor_id: str,
-    ) -> GlossaryGroup:
-        """Move all terms from source into target, delete source group."""
+    ) -> GlossaryGroup | None:
+        """Move all terms from source into target, delete source group.
+
+        Returns ``None`` when either group does not exist.
+        """
         ...
 
     async def split_term(
@@ -404,8 +417,11 @@ class Backend(Protocol):
         *,
         new_canonical: str,
         actor_id: str,
-    ) -> GlossaryGroup:
-        """Remove term from its group, create a new group with it as canonical."""
+    ) -> GlossaryGroup | None:
+        """Remove term from its group, create a new group with it as canonical.
+
+        Returns ``None`` when the term does not exist.
+        """
         ...
 
     async def expand_query(
