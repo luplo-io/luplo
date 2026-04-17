@@ -87,9 +87,7 @@ def upgrade() -> None:
 
     # 6. ALTER each FK column type TEXT → UUID.
     for table, col, _c in _FK_COLUMNS:
-        op.execute(
-            f"ALTER TABLE {table} ALTER COLUMN {col} TYPE UUID USING {col}::uuid"
-        )
+        op.execute(f"ALTER TABLE {table} ALTER COLUMN {col} TYPE UUID USING {col}::uuid")
 
     # 7. Re-add FK constraints.
     for table, col, constraint in _FK_COLUMNS:
@@ -109,9 +107,7 @@ def upgrade() -> None:
 
     # 9. Add auth columns.
     op.execute("ALTER TABLE actors ADD COLUMN password_hash TEXT")
-    op.execute(
-        "ALTER TABLE actors ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE"
-    )
+    op.execute("ALTER TABLE actors ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE")
     op.execute("ALTER TABLE actors ADD COLUMN last_login_at TIMESTAMPTZ")
 
     # 10. Cleanup.
@@ -136,9 +132,7 @@ def downgrade() -> None:
 
     # 5. Convert each FK column UUID → TEXT.
     for table, col, _constraint in _FK_COLUMNS:
-        op.execute(
-            f"ALTER TABLE {table} ALTER COLUMN {col} TYPE TEXT USING {col}::text"
-        )
+        op.execute(f"ALTER TABLE {table} ALTER COLUMN {col} TYPE TEXT USING {col}::text")
 
     # 6. Re-add FK constraints.
     for table, col, constraint in _FK_COLUMNS:

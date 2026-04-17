@@ -17,7 +17,6 @@ from luplo.core.glossary import (
     split_term,
 )
 
-
 # ── Groups ───────────────────────────────────────────────────────
 
 

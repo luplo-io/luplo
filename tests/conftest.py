@@ -36,12 +36,8 @@ def db_url() -> str:
 
     if managed:
         db_name = url.rsplit("/", 1)[-1]
-        with psycopg.connect(
-            DEFAULT_ADMIN_URL, autocommit=True
-        ) as conn:
-            conn.execute(
-                sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name))
-            )
+        with psycopg.connect(DEFAULT_ADMIN_URL, autocommit=True) as conn:
+            conn.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name)))
             conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name)))
 
     # Run alembic migrations
@@ -58,9 +54,7 @@ def db_url() -> str:
 
     if managed:
         db_name = url.rsplit("/", 1)[-1]
-        with psycopg.connect(
-            DEFAULT_ADMIN_URL, autocommit=True
-        ) as conn:
+        with psycopg.connect(DEFAULT_ADMIN_URL, autocommit=True) as conn:
             # Terminate lingering connections before dropping
             conn.execute(
                 sql.SQL(
@@ -69,9 +63,7 @@ def db_url() -> str:
                     "WHERE datname = {} AND pid <> pg_backend_pid()"
                 ).format(sql.Literal(db_name))
             )
-            conn.execute(
-                sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name))
-            )
+            conn.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name)))
 
 
 # ── Function-scoped: per-test isolation ──────────────────────────
@@ -115,8 +107,7 @@ async def seed_actor(conn: psycopg.AsyncConnection) -> str:  # type: ignore[type
     """
     actor_id = "00000000-0000-0000-0000-000000000001"
     await conn.execute(
-        "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s)"
-        " ON CONFLICT (id) DO NOTHING",
+        "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING",
         (actor_id, "Test User", "test@luplo.io"),
     )
     return actor_id
@@ -124,7 +115,9 @@ async def seed_actor(conn: psycopg.AsyncConnection) -> str:  # type: ignore[type
 
 @pytest_asyncio.fixture
 async def seed_item(
-    conn: psycopg.AsyncConnection, seed_project: str, seed_actor: str  # type: ignore[type-arg]
+    conn: psycopg.AsyncConnection,
+    seed_project: str,
+    seed_actor: str,  # type: ignore[type-arg]
 ) -> str:
     """Insert a default item and return its ID."""
     item_id = "test-item"

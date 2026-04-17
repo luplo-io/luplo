@@ -140,13 +140,10 @@ async def get_ready_sync_jobs(
         return [_row_to_job(row) for row in await cur.fetchall()]
 
 
-async def complete_sync_job(
-    conn: AsyncConnection[Any], job_id: int
-) -> None:
+async def complete_sync_job(conn: AsyncConnection[Any], job_id: int) -> None:
     """Mark a sync job as successfully completed."""
     await conn.execute(
-        "UPDATE sync_jobs SET status = 'completed', updated_at = now()"
-        " WHERE id = %(id)s",
+        "UPDATE sync_jobs SET status = 'completed', updated_at = now() WHERE id = %(id)s",
         {"id": job_id},
     )
 

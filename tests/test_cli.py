@@ -33,8 +33,7 @@ def _seed_cli_data(db_url: str) -> None:
             ("cli-test-project", "CLI Test"),
         )
         conn.execute(
-            "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s)"
-            " ON CONFLICT DO NOTHING",
+            "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
             ("00000000-0000-0000-0000-0000000000c1", "CLI Actor", "cli@test.com"),
         )
         conn.commit()
@@ -74,11 +73,6 @@ def test_work_open_and_close(env: dict[str, str]) -> None:
     assert result.exit_code == 0
     assert "Opened" in result.output
 
-    # Extract work unit ID from output
-    # Output format: "Opened work unit [xxxxxxxx] CLI sprint"
-    wu_id_prefix = result.output.split("[")[1].split("]")[0]
-
-    # Get full ID via brief (which lists active work units)
     brief_result = runner.invoke(app, ["brief"], env=env)
     assert "CLI sprint" in brief_result.output
 

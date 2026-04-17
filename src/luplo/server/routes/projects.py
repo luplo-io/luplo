@@ -27,7 +27,9 @@ class ProjectResponse(BaseModel):
 
 def _serialize(p: Any) -> dict[str, Any]:
     return {
-        "id": p.id, "name": p.name, "description": p.description,
+        "id": p.id,
+        "name": p.name,
+        "description": p.description,
         "created_at": p.created_at.isoformat(),
     }
 
@@ -49,6 +51,7 @@ async def get_project(project_id: str, request: Request) -> dict[str, Any]:
     p = await b.get_project(project_id)
     if not p:
         from fastapi import HTTPException
+
         raise HTTPException(404, "Project not found")
     return _serialize(p)
 

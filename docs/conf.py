@@ -10,7 +10,7 @@ from __future__ import annotations
 
 project = "luplo"
 author = "hanyul99"
-copyright = "2026, hanyul99"  # noqa: A001
+copyright = "2026, hanyul99"
 release = "0.0.1"
 
 # ── General config ───────────────────────────────────────────────

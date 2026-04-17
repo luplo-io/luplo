@@ -47,8 +47,11 @@ async def open_work_unit(
 ) -> dict[str, Any]:
     b = request.app.state.backend
     wu = await b.open_work_unit(
-        id=body.id, project_id=body.project_id, title=body.title,
-        description=body.description, system_ids=body.system_ids or None,
+        id=body.id,
+        project_id=body.project_id,
+        title=body.title,
+        description=body.description,
+        system_ids=body.system_ids or None,
         created_by=actor.id,
     )
     return _serialize(wu)

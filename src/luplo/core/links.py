@@ -50,7 +50,7 @@ async def create_link(
         from_item_id: Source item.
         to_item_id: Target item.
         link_type: Relationship type (e.g. ``"excludes"``).
-        strength: Weight 1–10, default 5.
+        strength: Weight 1-10, default 5.
         note: Optional annotation.
         actor_id: Who created this link.
 
@@ -109,9 +109,7 @@ async def get_links(
     elif direction == "to":
         condition = sql.SQL("to_item_id = %(item_id)s")
     else:
-        condition = sql.SQL(
-            "(from_item_id = %(item_id)s OR to_item_id = %(item_id)s)"
-        )
+        condition = sql.SQL("(from_item_id = %(item_id)s OR to_item_id = %(item_id)s)")
 
     params: dict[str, Any] = {"item_id": item_id}
 
@@ -121,9 +119,9 @@ async def get_links(
         params["link_type"] = link_type
 
     where = sql.SQL(" AND ").join(conditions)
-    query = sql.SQL(
-        "SELECT {columns} FROM links WHERE {where} ORDER BY created_at DESC"
-    ).format(columns=_RETURNING, where=where)
+    query = sql.SQL("SELECT {columns} FROM links WHERE {where} ORDER BY created_at DESC").format(
+        columns=_RETURNING, where=where
+    )
 
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, params)

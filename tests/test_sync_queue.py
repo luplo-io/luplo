@@ -57,10 +57,16 @@ async def test_enqueue_debounce_merges(conn: object) -> None:
 @pytest.mark.asyncio
 async def test_enqueue_different_pages_separate(conn: object) -> None:
     job1 = await enqueue_sync(
-        conn, source_type="notion", source_page_id="page-1", debounce_seconds=0  # type: ignore[arg-type]
+        conn,
+        source_type="notion",
+        source_page_id="page-1",
+        debounce_seconds=0,  # type: ignore[arg-type]
     )
     job2 = await enqueue_sync(
-        conn, source_type="notion", source_page_id="page-2", debounce_seconds=0  # type: ignore[arg-type]
+        conn,
+        source_type="notion",
+        source_page_id="page-2",
+        debounce_seconds=0,  # type: ignore[arg-type]
     )
 
     assert job1.id != job2.id
@@ -69,7 +75,10 @@ async def test_enqueue_different_pages_separate(conn: object) -> None:
 @pytest.mark.asyncio
 async def test_get_ready_returns_mature_jobs(conn: object) -> None:
     await enqueue_sync(
-        conn, source_type="notion", source_page_id="ready", debounce_seconds=0  # type: ignore[arg-type]
+        conn,
+        source_type="notion",
+        source_page_id="ready",
+        debounce_seconds=0,  # type: ignore[arg-type]
     )
 
     jobs = await get_ready_sync_jobs(conn, limit=10)  # type: ignore[arg-type]
@@ -81,7 +90,10 @@ async def test_get_ready_returns_mature_jobs(conn: object) -> None:
 @pytest.mark.asyncio
 async def test_get_ready_skips_future_jobs(conn: object) -> None:
     await enqueue_sync(
-        conn, source_type="notion", source_page_id="future", debounce_seconds=9999  # type: ignore[arg-type]
+        conn,
+        source_type="notion",
+        source_page_id="future",
+        debounce_seconds=9999,  # type: ignore[arg-type]
     )
 
     jobs = await get_ready_sync_jobs(conn, limit=10)  # type: ignore[arg-type]
@@ -91,7 +103,10 @@ async def test_get_ready_skips_future_jobs(conn: object) -> None:
 @pytest.mark.asyncio
 async def test_get_ready_skips_already_processing(conn: object) -> None:
     await enqueue_sync(
-        conn, source_type="notion", source_page_id="p1", debounce_seconds=0  # type: ignore[arg-type]
+        conn,
+        source_type="notion",
+        source_page_id="p1",
+        debounce_seconds=0,  # type: ignore[arg-type]
     )
     # Claim it
     claimed = await get_ready_sync_jobs(conn, limit=1)  # type: ignore[arg-type]
@@ -105,7 +120,10 @@ async def test_get_ready_skips_already_processing(conn: object) -> None:
 @pytest.mark.asyncio
 async def test_complete_sync_job(conn: object) -> None:
     job = await enqueue_sync(
-        conn, source_type="notion", source_page_id="done", debounce_seconds=0  # type: ignore[arg-type]
+        conn,
+        source_type="notion",
+        source_page_id="done",
+        debounce_seconds=0,  # type: ignore[arg-type]
     )
     await complete_sync_job(conn, job.id)  # type: ignore[arg-type]
 
@@ -119,7 +137,10 @@ async def test_complete_sync_job(conn: object) -> None:
 @pytest.mark.asyncio
 async def test_fail_sync_job_retry(conn: object) -> None:
     job = await enqueue_sync(
-        conn, source_type="notion", source_page_id="retry", debounce_seconds=0  # type: ignore[arg-type]
+        conn,
+        source_type="notion",
+        source_page_id="retry",
+        debounce_seconds=0,  # type: ignore[arg-type]
     )
     await fail_sync_job(conn, job.id, error="timeout")  # type: ignore[arg-type]
 
@@ -138,15 +159,16 @@ async def test_fail_sync_job_retry(conn: object) -> None:
 @pytest.mark.asyncio
 async def test_fail_sync_job_permanent_after_3(conn: object) -> None:
     job = await enqueue_sync(
-        conn, source_type="notion", source_page_id="dead", debounce_seconds=0  # type: ignore[arg-type]
+        conn,
+        source_type="notion",
+        source_page_id="dead",
+        debounce_seconds=0,  # type: ignore[arg-type]
     )
     for i in range(3):
         await fail_sync_job(conn, job.id, error=f"fail {i}")  # type: ignore[arg-type]
 
     async with conn.cursor(row_factory=dict_row) as cur:  # type: ignore[union-attr]
-        await cur.execute(
-            "SELECT status, attempts FROM sync_jobs WHERE id = %s", (job.id,)
-        )
+        await cur.execute("SELECT status, attempts FROM sync_jobs WHERE id = %s", (job.id,))
         row = await cur.fetchone()
         assert row is not None
         assert row["status"] == "failed"

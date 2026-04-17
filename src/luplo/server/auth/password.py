@@ -27,9 +27,7 @@ def hash_password(plain: str) -> str:
         WeakPasswordError: If *plain* is shorter than ``MIN_PASSWORD_LENGTH``.
     """
     if len(plain) < MIN_PASSWORD_LENGTH:
-        raise WeakPasswordError(
-            f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
-        )
+        raise WeakPasswordError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
     return _hasher.hash(plain)
 
 

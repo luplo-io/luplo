@@ -15,7 +15,10 @@ EMAIL = "jwt-test@luplo.io"
 
 def test_round_trip() -> None:
     tok = issue_token(
-        actor_id=ACTOR, email=EMAIL, secret=SECRET, ttl_minutes=5,
+        actor_id=ACTOR,
+        email=EMAIL,
+        secret=SECRET,
+        ttl_minutes=5,
     )
     claims = decode_token(tok, secret=SECRET)
     assert claims["sub"] == ACTOR
@@ -26,7 +29,10 @@ def test_round_trip() -> None:
 
 def test_admin_flag() -> None:
     tok = issue_token(
-        actor_id=ACTOR, email=EMAIL, secret=SECRET, ttl_minutes=5,
+        actor_id=ACTOR,
+        email=EMAIL,
+        secret=SECRET,
+        ttl_minutes=5,
         is_admin=True,
     )
     claims = decode_token(tok, secret=SECRET)
@@ -35,7 +41,10 @@ def test_admin_flag() -> None:
 
 def test_wrong_secret_rejected() -> None:
     tok = issue_token(
-        actor_id=ACTOR, email=EMAIL, secret=SECRET, ttl_minutes=5,
+        actor_id=ACTOR,
+        email=EMAIL,
+        secret=SECRET,
+        ttl_minutes=5,
     )
     with pytest.raises(TokenError):
         decode_token(tok, secret="different-secret-that-does-not-match")
@@ -43,7 +52,10 @@ def test_wrong_secret_rejected() -> None:
 
 def test_expired_token_rejected() -> None:
     tok = issue_token(
-        actor_id=ACTOR, email=EMAIL, secret=SECRET, ttl_minutes=0,
+        actor_id=ACTOR,
+        email=EMAIL,
+        secret=SECRET,
+        ttl_minutes=0,
     )
     time.sleep(1)
     with pytest.raises(TokenError):

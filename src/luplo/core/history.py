@@ -135,9 +135,7 @@ async def query_history(
     """
     # Build FROM clause — JOIN items only if project_id filter is used
     if project_id is not None:
-        from_clause = sql.SQL(
-            "items_history h JOIN items i ON h.item_id = i.id"
-        )
+        from_clause = sql.SQL("items_history h JOIN items i ON h.item_id = i.id")
     else:
         from_clause = sql.SQL("items_history h")
 
@@ -160,20 +158,13 @@ async def query_history(
         conditions.append(sql.SQL("h.semantic_impact = ANY(%(impacts)s)"))
         params["impacts"] = semantic_impacts
 
-    where = (
-        sql.SQL(" WHERE ") + sql.SQL(" AND ").join(conditions)
-        if conditions
-        else sql.SQL("")
-    )
+    where = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(conditions) if conditions else sql.SQL("")
 
     # Prefix all column refs with h. to avoid ambiguity on the JOIN
-    h_columns = sql.SQL(", ").join(
-        sql.SQL("h.") + sql.Identifier(c) for c in _COLUMNS
-    )
+    h_columns = sql.SQL(", ").join(sql.SQL("h.") + sql.Identifier(c) for c in _COLUMNS)
 
     query = sql.SQL(
-        "SELECT {columns} FROM {from_clause}{where}"
-        " ORDER BY h.changed_at DESC LIMIT %(limit)s"
+        "SELECT {columns} FROM {from_clause}{where} ORDER BY h.changed_at DESC LIMIT %(limit)s"
     ).format(columns=h_columns, from_clause=from_clause, where=where)
 
     async with conn.cursor(row_factory=dict_row) as cur:

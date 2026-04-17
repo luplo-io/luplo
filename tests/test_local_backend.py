@@ -89,14 +89,21 @@ async def test_item_supersede_creates_history(backend: LocalBackend) -> None:
 
     v1 = await backend.create_item(
         ItemCreate(
-            project_id=pid, actor_id=aid, item_type="decision",
-            title="V1", body="Original",
+            project_id=pid,
+            actor_id=aid,
+            item_type="decision",
+            title="V1",
+            body="Original",
         )
     )
     v2 = await backend.create_item(
         ItemCreate(
-            project_id=pid, actor_id=aid, item_type="decision",
-            title="V2", body="Updated", supersedes_id=v1.id,
+            project_id=pid,
+            actor_id=aid,
+            item_type="decision",
+            title="V2",
+            body="Updated",
+            supersedes_id=v1.id,
         )
     )
 
@@ -115,7 +122,10 @@ async def test_work_unit_lifecycle(backend: LocalBackend) -> None:
     await backend.create_actor(id=aid, name="Actor")
 
     wu = await backend.open_work_unit(
-        id=_uid(), project_id=pid, title="Design sprint", created_by=aid,
+        id=_uid(),
+        project_id=pid,
+        title="Design sprint",
+        created_by=aid,
     )
     assert wu.status == "in_progress"
 
@@ -135,8 +145,11 @@ async def test_search_through_backend(backend: LocalBackend) -> None:
 
     await backend.create_item(
         ItemCreate(
-            project_id=pid, actor_id=aid, item_type="decision",
-            title="Vendor budget formula", body="NPC shops use goldpool",
+            project_id=pid,
+            actor_id=aid,
+            item_type="decision",
+            title="Vendor budget formula",
+            body="NPC shops use goldpool",
         )
     )
 
@@ -154,20 +167,27 @@ async def test_glossary_through_backend(backend: LocalBackend) -> None:
     await backend.create_actor(id=aid, name="Actor")
 
     group = await backend.create_glossary_group(
-        id=gid, project_id=pid, canonical="vendor",
+        id=gid,
+        project_id=pid,
+        canonical="vendor",
     )
     assert group.canonical == "vendor"
 
     term = await backend.create_glossary_term(
-        id=_uid(), group_id=gid, surface="shop",
-        normalized="shop", status="pending",
+        id=_uid(),
+        group_id=gid,
+        surface="shop",
+        normalized="shop",
+        status="pending",
     )
 
     pending = await backend.list_pending_terms(pid)
     assert any(t.id == term.id for t in pending)
 
     approved = await backend.approve_term(
-        term.id, group_id=gid, actor_id=aid,
+        term.id,
+        group_id=gid,
+        actor_id=aid,
     )
     assert approved.status == "alias"
 
@@ -175,8 +195,10 @@ async def test_glossary_through_backend(backend: LocalBackend) -> None:
 @pytest.mark.asyncio
 async def test_sync_through_backend(backend: LocalBackend) -> None:
     job = await backend.enqueue_sync(
-        source_type="notion", source_page_id="page-1",
-        payload="# Content", debounce_seconds=0,
+        source_type="notion",
+        source_page_id="page-1",
+        payload="# Content",
+        debounce_seconds=0,
     )
     assert job.status == "pending"
 
@@ -201,7 +223,10 @@ async def test_link_through_backend(backend: LocalBackend) -> None:
     )
 
     link = await backend.create_link(
-        from_item_id=a.id, to_item_id=b.id, link_type="excludes", actor_id=aid,
+        from_item_id=a.id,
+        to_item_id=b.id,
+        link_type="excludes",
+        actor_id=aid,
     )
     assert link.link_type == "excludes"
 

@@ -20,9 +20,17 @@ from psycopg.types.json import Jsonb
 from luplo.core.models import Actor
 
 _COLUMNS = (
-    "id", "name", "email", "role",
-    "oauth_provider", "oauth_subject", "external_ids", "joined_at",
-    "password_hash", "is_admin", "last_login_at",
+    "id",
+    "name",
+    "email",
+    "role",
+    "oauth_provider",
+    "oauth_subject",
+    "external_ids",
+    "joined_at",
+    "password_hash",
+    "is_admin",
+    "last_login_at",
 )
 _RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in _COLUMNS)
 
@@ -98,26 +106,20 @@ async def create_actor(
         return _row_to_actor(row)
 
 
-async def get_actor(
-    conn: AsyncConnection[Any], actor_id: str
-) -> Actor | None:
+async def get_actor(conn: AsyncConnection[Any], actor_id: str) -> Actor | None:
     """Fetch an actor by ID. Returns ``None`` if not found."""
-    query = sql.SQL("SELECT {columns} FROM actors WHERE id = %(id)s").format(
-        columns=_RETURNING
-    )
+    query = sql.SQL("SELECT {columns} FROM actors WHERE id = %(id)s").format(columns=_RETURNING)
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, {"id": actor_id})
         row = await cur.fetchone()
         return _row_to_actor(row) if row else None
 
 
-async def get_actor_by_email(
-    conn: AsyncConnection[Any], email: str
-) -> Actor | None:
+async def get_actor_by_email(conn: AsyncConnection[Any], email: str) -> Actor | None:
     """Look up an actor by email. Returns ``None`` if not found."""
-    query = sql.SQL(
-        "SELECT {columns} FROM actors WHERE email = %(email)s"
-    ).format(columns=_RETURNING)
+    query = sql.SQL("SELECT {columns} FROM actors WHERE email = %(email)s").format(
+        columns=_RETURNING
+    )
 
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, {"email": email})
@@ -125,9 +127,7 @@ async def get_actor_by_email(
         return _row_to_actor(row) if row else None
 
 
-async def set_password(
-    conn: AsyncConnection[Any], actor_id: str, password_hash: str
-) -> None:
+async def set_password(conn: AsyncConnection[Any], actor_id: str, password_hash: str) -> None:
     """Update an actor's password hash. Caller is responsible for hashing."""
     await conn.execute(
         "UPDATE actors SET password_hash = %s WHERE id = %s",
@@ -135,9 +135,7 @@ async def set_password(
     )
 
 
-async def set_admin(
-    conn: AsyncConnection[Any], actor_id: str, is_admin: bool
-) -> None:
+async def set_admin(conn: AsyncConnection[Any], actor_id: str, is_admin: bool) -> None:
     """Grant or revoke admin privileges."""
     await conn.execute(
         "UPDATE actors SET is_admin = %s WHERE id = %s",

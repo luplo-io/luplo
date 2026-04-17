@@ -31,7 +31,9 @@ AUTH_COOKIE = "luplo_token"
 def _is_auth_disabled() -> bool:
     """Evaluated per-request so tests can toggle the env var freely."""
     return os.environ.get("LUPLO_AUTH_DISABLED", "").lower() in (
-        "1", "true", "yes",
+        "1",
+        "true",
+        "yes",
     )
 
 

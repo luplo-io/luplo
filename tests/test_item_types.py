@@ -149,11 +149,15 @@ async def test_create_user_item_type(conn: object) -> None:
 
     # Round-trip: validation honours the freshly registered schema.
     await validate_context(
-        conn, "sprint", {"team": "alpha"}  # type: ignore[arg-type]
+        conn,
+        "sprint",
+        {"team": "alpha"},  # type: ignore[arg-type]
     )
     with pytest.raises(ContextValidationError):
         await validate_context(
-            conn, "sprint", {}  # type: ignore[arg-type]
+            conn,
+            "sprint",
+            {},  # type: ignore[arg-type]
         )
 
 

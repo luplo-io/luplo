@@ -12,18 +12,10 @@ from typing import Any
 import httpx
 
 from luplo.core.models import (
-    Actor,
-    GlossaryGroup,
-    GlossaryRejection,
-    GlossaryTerm,
-    HistoryEntry,
     Item,
     ItemCreate,
-    Link,
     Project,
     SearchResult,
-    SyncJob,
-    System,
     WorkUnit,
 )
 

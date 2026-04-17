@@ -35,14 +35,11 @@ async def test_worker_processes_ready_job(pool: AsyncConnectionPool) -> None:
 
     await _process_ready_jobs(pool)
 
-    async with pool.connection() as conn:
-        async with conn.cursor(row_factory=dict_row) as cur:
-            await cur.execute(
-                "SELECT status FROM sync_jobs WHERE id = %s", (job.id,)
-            )
-            row = await cur.fetchone()
-            assert row is not None
-            assert row["status"] == "completed"
+    async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute("SELECT status FROM sync_jobs WHERE id = %s", (job.id,))
+        row = await cur.fetchone()
+        assert row is not None
+        assert row["status"] == "completed"
 
 
 @pytest.mark.asyncio
@@ -57,11 +54,8 @@ async def test_worker_skips_future_jobs(pool: AsyncConnectionPool) -> None:
 
     await _process_ready_jobs(pool)
 
-    async with pool.connection() as conn:
-        async with conn.cursor(row_factory=dict_row) as cur:
-            await cur.execute(
-                "SELECT status FROM sync_jobs WHERE id = %s", (job.id,)
-            )
-            row = await cur.fetchone()
-            assert row is not None
-            assert row["status"] == "pending"  # not processed
+    async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute("SELECT status FROM sync_jobs WHERE id = %s", (job.id,))
+        row = await cur.fetchone()
+        assert row is not None
+        assert row["status"] == "pending"  # not processed

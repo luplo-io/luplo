@@ -21,8 +21,11 @@ async def search_items(
     """Full-text search with glossary expansion."""
     b = request.app.state.backend
     results = await b.search(
-        q, project_id, item_types=item_types,
-        system_ids=system_ids, limit=limit,
+        q,
+        project_id,
+        item_types=item_types,
+        system_ids=system_ids,
+        limit=limit,
     )
     return [
         {

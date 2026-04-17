@@ -57,22 +57,24 @@ async def create_item(
     from luplo.core.models import ItemCreate
 
     b = request.app.state.backend
-    item = await b.create_item(ItemCreate(
-        project_id=body.project_id,
-        actor_id=actor.id,
-        item_type=body.item_type,
-        title=body.title,
-        body=body.body,
-        rationale=body.rationale,
-        system_ids=body.system_ids,
-        tags=body.tags,
-        work_unit_id=body.work_unit_id,
-        supersedes_id=body.supersedes_id,
-        source_url=body.source_url,
-        expires_at=body.expires_at,
-        source_type=body.source_type,
-        source_page_id=body.source_page_id,
-    ))
+    item = await b.create_item(
+        ItemCreate(
+            project_id=body.project_id,
+            actor_id=actor.id,
+            item_type=body.item_type,
+            title=body.title,
+            body=body.body,
+            rationale=body.rationale,
+            system_ids=body.system_ids,
+            tags=body.tags,
+            work_unit_id=body.work_unit_id,
+            supersedes_id=body.supersedes_id,
+            source_url=body.source_url,
+            expires_at=body.expires_at,
+            source_type=body.source_type,
+            source_page_id=body.source_page_id,
+        )
+    )
     return _serialize(item)
 
 
@@ -97,8 +99,12 @@ async def list_items(
 ) -> list[dict[str, Any]]:
     b = request.app.state.backend
     items = await b.list_items(
-        project_id, item_type=item_type, system_id=system_id,
-        work_unit_id=work_unit_id, limit=limit, offset=offset,
+        project_id,
+        item_type=item_type,
+        system_id=system_id,
+        work_unit_id=work_unit_id,
+        limit=limit,
+        offset=offset,
     )
     return [_serialize(i) for i in items]
 

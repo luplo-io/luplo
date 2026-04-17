@@ -41,8 +41,7 @@ async def client(db_url_env: str) -> AsyncClient:  # type: ignore[misc]
     # Seed the actor that AUTH_DISABLED mode pretends is "current".
     async with pool.connection() as conn:
         await conn.execute(
-            "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s)"
-            " ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING",
             (_TEST_SERVER_ACTOR_UUID, "Test Server Actor", "test-server@luplo.io"),
         )
 
@@ -97,9 +96,14 @@ async def test_item_crud(client: AsyncClient) -> None:
     # Actor is seeded by the `client` fixture (UUID-keyed).
 
     # Create item
-    resp = await client.post("/items", json={
-        "project_id": pid, "title": "Test decision", "item_type": "decision",
-    })
+    resp = await client.post(
+        "/items",
+        json={
+            "project_id": pid,
+            "title": "Test decision",
+            "item_type": "decision",
+        },
+    )
     assert resp.status_code == 201
     item_id = resp.json()["id"]
 
@@ -131,9 +135,14 @@ async def test_work_unit_lifecycle(client: AsyncClient) -> None:
     # Actor is seeded by the `client` fixture (UUID-keyed).
 
     # Open
-    resp = await client.post("/work-units", json={
-        "id": wid, "project_id": pid, "title": "Sprint 1",
-    })
+    resp = await client.post(
+        "/work-units",
+        json={
+            "id": wid,
+            "project_id": pid,
+            "title": "Sprint 1",
+        },
+    )
     assert resp.status_code == 201
     assert resp.json()["status"] == "in_progress"
 
@@ -154,10 +163,15 @@ async def test_search(client: AsyncClient) -> None:
 
     # Actor is seeded by the `client` fixture (UUID-keyed).
 
-    await client.post("/items", json={
-        "project_id": pid, "title": "Vendor budget formula",
-        "body": "NPC shops use goldpool percentage", "item_type": "decision",
-    })
+    await client.post(
+        "/items",
+        json={
+            "project_id": pid,
+            "title": "Vendor budget formula",
+            "body": "NPC shops use goldpool percentage",
+            "item_type": "decision",
+        },
+    )
 
     resp = await client.get("/search", params={"q": "vendor", "project_id": pid})
     assert resp.status_code == 200

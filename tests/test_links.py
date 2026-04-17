@@ -20,9 +20,7 @@ async def _make_item(conn: object, project: str, actor: str, title: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_create_link(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_create_link(conn: object, seed_project: str, seed_actor: str) -> None:
     a = await _make_item(conn, seed_project, seed_actor, "Item A")
     b = await _make_item(conn, seed_project, seed_actor, "Item B")
 
@@ -45,14 +43,15 @@ async def test_create_link(
 
 
 @pytest.mark.asyncio
-async def test_create_link_defaults(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_create_link_defaults(conn: object, seed_project: str, seed_actor: str) -> None:
     a = await _make_item(conn, seed_project, seed_actor, "A")
     b = await _make_item(conn, seed_project, seed_actor, "B")
 
     link = await create_link(
-        conn, from_item_id=a, to_item_id=b, link_type="related"  # type: ignore[arg-type]
+        conn,
+        from_item_id=a,
+        to_item_id=b,
+        link_type="related",  # type: ignore[arg-type]
     )
     assert link.strength == 5
     assert link.note is None
@@ -60,25 +59,27 @@ async def test_create_link_defaults(
 
 
 @pytest.mark.asyncio
-async def test_create_link_duplicate(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_create_link_duplicate(conn: object, seed_project: str, seed_actor: str) -> None:
     a = await _make_item(conn, seed_project, seed_actor, "A")
     b = await _make_item(conn, seed_project, seed_actor, "B")
 
     await create_link(
-        conn, from_item_id=a, to_item_id=b, link_type="dup"  # type: ignore[arg-type]
+        conn,
+        from_item_id=a,
+        to_item_id=b,
+        link_type="dup",  # type: ignore[arg-type]
     )
     with pytest.raises(UniqueViolation):
         await create_link(
-            conn, from_item_id=a, to_item_id=b, link_type="dup"  # type: ignore[arg-type]
+            conn,
+            from_item_id=a,
+            to_item_id=b,
+            link_type="dup",  # type: ignore[arg-type]
         )
 
 
 @pytest.mark.asyncio
-async def test_get_links_from(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_get_links_from(conn: object, seed_project: str, seed_actor: str) -> None:
     a = await _make_item(conn, seed_project, seed_actor, "A")
     b = await _make_item(conn, seed_project, seed_actor, "B")
     c = await _make_item(conn, seed_project, seed_actor, "C")
@@ -89,13 +90,11 @@ async def test_get_links_from(
 
     links = await get_links(conn, a, direction="from")  # type: ignore[arg-type]
     assert len(links) == 2
-    assert {l.to_item_id for l in links} == {b, c}
+    assert {link.to_item_id for link in links} == {b, c}
 
 
 @pytest.mark.asyncio
-async def test_get_links_to(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_get_links_to(conn: object, seed_project: str, seed_actor: str) -> None:
     a = await _make_item(conn, seed_project, seed_actor, "A")
     b = await _make_item(conn, seed_project, seed_actor, "B")
     c = await _make_item(conn, seed_project, seed_actor, "C")
@@ -105,13 +104,11 @@ async def test_get_links_to(
 
     links = await get_links(conn, c, direction="to")  # type: ignore[arg-type]
     assert len(links) == 2
-    assert {l.from_item_id for l in links} == {a, b}
+    assert {link.from_item_id for link in links} == {a, b}
 
 
 @pytest.mark.asyncio
-async def test_get_links_both(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_get_links_both(conn: object, seed_project: str, seed_actor: str) -> None:
     a = await _make_item(conn, seed_project, seed_actor, "A")
     b = await _make_item(conn, seed_project, seed_actor, "B")
     c = await _make_item(conn, seed_project, seed_actor, "C")
@@ -124,9 +121,7 @@ async def test_get_links_both(
 
 
 @pytest.mark.asyncio
-async def test_get_links_filter_type(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_get_links_filter_type(conn: object, seed_project: str, seed_actor: str) -> None:
     a = await _make_item(conn, seed_project, seed_actor, "A")
     b = await _make_item(conn, seed_project, seed_actor, "B")
 
@@ -134,7 +129,10 @@ async def test_get_links_filter_type(
     await create_link(conn, from_item_id=a, to_item_id=b, link_type="synergizes")  # type: ignore[arg-type]
 
     links = await get_links(
-        conn, a, direction="from", link_type="excludes"  # type: ignore[arg-type]
+        conn,
+        a,
+        direction="from",
+        link_type="excludes",  # type: ignore[arg-type]
     )
     assert len(links) == 1
     assert links[0].link_type == "excludes"
@@ -147,9 +145,7 @@ async def test_get_links_empty(conn: object, seed_item: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_link(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_delete_link(conn: object, seed_project: str, seed_actor: str) -> None:
     a = await _make_item(conn, seed_project, seed_actor, "A")
     b = await _make_item(conn, seed_project, seed_actor, "B")
 

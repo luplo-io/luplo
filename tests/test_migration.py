@@ -6,7 +6,6 @@ import os
 import subprocess
 
 import psycopg
-import pytest
 
 EXPECTED_TABLES = {
     "projects",

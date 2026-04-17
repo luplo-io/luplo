@@ -11,7 +11,6 @@ from luplo.core.models import ItemCreate
 from luplo.core.search import search
 from luplo.core.search.tsquery import build_tsquery
 
-
 # ── tsquery builder (unit, no DB) ────────────────────────────────
 
 
@@ -21,7 +20,7 @@ def test_build_tsquery_simple() -> None:
 
 def test_build_tsquery_with_or() -> None:
     result = build_tsquery("(vendor | shop) & budget")
-    assert "(vendor | shop) & budget" == result
+    assert result == "(vendor | shop) & budget"
 
 
 def test_build_tsquery_empty() -> None:
@@ -32,9 +31,7 @@ def test_build_tsquery_empty() -> None:
 # ── Full pipeline (integration) ──────────────────────────────────
 
 
-async def _seed_items(
-    conn: object, project: str, actor: str
-) -> None:
+async def _seed_items(conn: object, project: str, actor: str) -> None:
     """Seed a few searchable items."""
     for title, body, systems in [
         ("Use PostgreSQL", "Best DB for tsquery and JSONB", ["infra"]),
@@ -56,9 +53,7 @@ async def _seed_items(
 
 
 @pytest.mark.asyncio
-async def test_search_basic(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_search_basic(conn: object, seed_project: str, seed_actor: str) -> None:
     await _seed_items(conn, seed_project, seed_actor)
 
     results = await search(conn, "vendor", seed_project)  # type: ignore[arg-type]
@@ -68,9 +63,7 @@ async def test_search_basic(
 
 
 @pytest.mark.asyncio
-async def test_search_no_results(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_search_no_results(conn: object, seed_project: str, seed_actor: str) -> None:
     await _seed_items(conn, seed_project, seed_actor)
 
     results = await search(conn, "xyznonexistent", seed_project)  # type: ignore[arg-type]
@@ -84,32 +77,40 @@ async def test_search_filter_by_item_type(
     await create_item(
         conn,  # type: ignore[arg-type]
         ItemCreate(
-            project_id=seed_project, actor_id=seed_actor,
-            item_type="decision", title="Decision about karma",
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Decision about karma",
         ),
     )
     await create_item(
         conn,  # type: ignore[arg-type]
         ItemCreate(
-            project_id=seed_project, actor_id=seed_actor,
-            item_type="knowledge", title="Knowledge about karma",
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="knowledge",
+            title="Knowledge about karma",
         ),
     )
 
     results = await search(
-        conn, "karma", seed_project, item_types=["knowledge"]  # type: ignore[arg-type]
+        conn,
+        "karma",
+        seed_project,
+        item_types=["knowledge"],  # type: ignore[arg-type]
     )
     assert all(r.item.item_type == "knowledge" for r in results)
 
 
 @pytest.mark.asyncio
-async def test_search_filter_by_system(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_search_filter_by_system(conn: object, seed_project: str, seed_actor: str) -> None:
     await _seed_items(conn, seed_project, seed_actor)
 
     results = await search(
-        conn, "vendor", seed_project, system_ids=["vendor"]  # type: ignore[arg-type]
+        conn,
+        "vendor",
+        seed_project,
+        system_ids=["vendor"],  # type: ignore[arg-type]
     )
     assert len(results) >= 1
     for r in results:
@@ -125,8 +126,10 @@ async def test_search_respects_soft_delete(
     item = await create_item(
         conn,  # type: ignore[arg-type]
         ItemCreate(
-            project_id=seed_project, actor_id=seed_actor,
-            item_type="decision", title="Deletable search target",
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Deletable search target",
         ),
     )
     await delete_item(conn, item.id, actor_id=seed_actor)  # type: ignore[arg-type]
@@ -142,23 +145,33 @@ async def test_search_with_glossary_expansion(
     """Search for 'shop' should find items mentioning 'vendor' via glossary."""
     # Seed glossary: vendor group with alias "shop"
     g = await create_glossary_group(
-        conn, project_id=seed_project, canonical="vendor"  # type: ignore[arg-type]
+        conn,
+        project_id=seed_project,
+        canonical="vendor",  # type: ignore[arg-type]
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="vendor", normalized="vendor", status="canonical",
+        group_id=g.id,
+        surface="vendor",
+        normalized="vendor",
+        status="canonical",
     )
     await create_glossary_term(
         conn,  # type: ignore[arg-type]
-        group_id=g.id, surface="shop", normalized="shop", status="alias",
+        group_id=g.id,
+        surface="shop",
+        normalized="shop",
+        status="alias",
     )
 
     # Seed item with "vendor" in title
     await create_item(
         conn,  # type: ignore[arg-type]
         ItemCreate(
-            project_id=seed_project, actor_id=seed_actor,
-            item_type="decision", title="Vendor budget formula",
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Vendor budget formula",
             body="NPC shops use goldpool",
         ),
     )
@@ -170,28 +183,29 @@ async def test_search_with_glossary_expansion(
 
 
 @pytest.mark.asyncio
-async def test_search_limit(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_search_limit(conn: object, seed_project: str, seed_actor: str) -> None:
     for i in range(5):
         await create_item(
             conn,  # type: ignore[arg-type]
             ItemCreate(
-                project_id=seed_project, actor_id=seed_actor,
-                item_type="decision", title=f"Searchable item {i}",
+                project_id=seed_project,
+                actor_id=seed_actor,
+                item_type="decision",
+                title=f"Searchable item {i}",
             ),
         )
 
     results = await search(
-        conn, "searchable", seed_project, limit=2  # type: ignore[arg-type]
+        conn,
+        "searchable",
+        seed_project,
+        limit=2,  # type: ignore[arg-type]
     )
     assert len(results) <= 2
 
 
 @pytest.mark.asyncio
-async def test_search_empty_query(
-    conn: object, seed_project: str
-) -> None:
+async def test_search_empty_query(conn: object, seed_project: str) -> None:
     results = await search(conn, "", seed_project)  # type: ignore[arg-type]
     assert results == []
 
@@ -204,6 +218,9 @@ async def test_search_with_null_embedding(
     await _seed_items(conn, seed_project, seed_actor)
 
     results = await search(
-        conn, "vendor", seed_project, embedding_backend=NullEmbedding()  # type: ignore[arg-type]
+        conn,
+        "vendor",
+        seed_project,
+        embedding_backend=NullEmbedding(),  # type: ignore[arg-type]
     )
     assert len(results) >= 1

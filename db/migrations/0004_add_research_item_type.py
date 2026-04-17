@@ -54,8 +54,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE items DROP CONSTRAINT IF EXISTS "
-        "items_research_source_url_check"
-    )
+    op.execute("ALTER TABLE items DROP CONSTRAINT IF EXISTS items_research_source_url_check")
     op.execute("DELETE FROM item_types WHERE key = 'research'")

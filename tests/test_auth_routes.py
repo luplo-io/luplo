@@ -47,8 +47,7 @@ async def auth_client(db_url: str) -> AsyncIterator[TestClient]:
         # Seed: project (dependency for items), login actor.
         async with pool.connection() as conn:
             await conn.execute(
-                "INSERT INTO projects (id, name) VALUES (%s, %s)"
-                " ON CONFLICT (id) DO NOTHING",
+                "INSERT INTO projects (id, name) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
                 ("auth-test", "auth-test"),
             )
             await create_actor(
@@ -69,12 +68,8 @@ async def auth_client(db_url: str) -> AsyncIterator[TestClient]:
     finally:
         # Clean up the login actor so the fixture is idempotent across runs.
         async with pool.connection() as conn:
-            await conn.execute(
-                "DELETE FROM actors WHERE email = %s", ("login@test.com",)
-            )
-            await conn.execute(
-                "DELETE FROM projects WHERE id = %s", ("auth-test",)
-            )
+            await conn.execute("DELETE FROM actors WHERE email = %s", ("login@test.com",))
+            await conn.execute("DELETE FROM projects WHERE id = %s", ("auth-test",))
         await pool.close()  # type: ignore[attr-defined]
         if prev_disabled is not None:
             os.environ["LUPLO_AUTH_DISABLED"] = prev_disabled
@@ -125,9 +120,7 @@ def test_whoami_with_token(auth_client: TestClient) -> None:
         data={"email": "login@test.com", "password": "correcthorsebatterystaple"},
     )
     token = login.json()["token"]
-    resp = auth_client.get(
-        "/auth/whoami", headers={"Authorization": f"Bearer {token}"}
-    )
+    resp = auth_client.get("/auth/whoami", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["email"] == "login@test.com"
@@ -139,9 +132,7 @@ def test_token_refresh(auth_client: TestClient) -> None:
         data={"email": "login@test.com", "password": "correcthorsebatterystaple"},
     )
     token = login.json()["token"]
-    resp = auth_client.post(
-        "/auth/token/refresh", headers={"Authorization": f"Bearer {token}"}
-    )
+    resp = auth_client.post("/auth/token/refresh", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert "token" in resp.json()
 

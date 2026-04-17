@@ -76,9 +76,7 @@ def upgrade() -> None:
     """)
 
     # 2. items.context JSONB.
-    op.execute(
-        "ALTER TABLE items ADD COLUMN context JSONB NOT NULL DEFAULT '{}'::jsonb"
-    )
+    op.execute("ALTER TABLE items ADD COLUMN context JSONB NOT NULL DEFAULT '{}'::jsonb")
 
     # 3. Seed system types.
     bind = op.get_bind()

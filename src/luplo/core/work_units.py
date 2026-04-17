@@ -74,8 +74,10 @@ async def open_work_unit(
     wu_id = id or str(uuid.uuid4())
 
     query = sql.SQL(
-        "INSERT INTO work_units (id, project_id, title, description, system_ids, created_by)"
-        " VALUES (%(id)s, %(project_id)s, %(title)s, %(description)s, %(system_ids)s, %(created_by)s)"
+        "INSERT INTO work_units"
+        " (id, project_id, title, description, system_ids, created_by)"
+        " VALUES"
+        " (%(id)s, %(project_id)s, %(title)s, %(description)s, %(system_ids)s, %(created_by)s)"
         " RETURNING {returning}"
     ).format(returning=_RETURNING)
 

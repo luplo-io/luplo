@@ -12,7 +12,6 @@ from luplo.core.work_units import (
     open_work_unit,
 )
 
-
 # ── open_work_unit ───────────────────────────────────────────────
 
 

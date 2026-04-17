@@ -61,13 +61,9 @@ async def create_project(
         return _row_to_project(row)
 
 
-async def get_project(
-    conn: AsyncConnection[Any], project_id: str
-) -> Project | None:
+async def get_project(conn: AsyncConnection[Any], project_id: str) -> Project | None:
     """Fetch a project by ID.  Returns ``None`` if not found."""
-    query = sql.SQL("SELECT {columns} FROM projects WHERE id = %(id)s").format(
-        columns=_RETURNING
-    )
+    query = sql.SQL("SELECT {columns} FROM projects WHERE id = %(id)s").format(columns=_RETURNING)
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, {"id": project_id})
         row = await cur.fetchone()
@@ -76,9 +72,9 @@ async def get_project(
 
 async def list_projects(conn: AsyncConnection[Any]) -> list[Project]:
     """List all projects ordered by creation date (newest first)."""
-    query = sql.SQL(
-        "SELECT {columns} FROM projects ORDER BY created_at DESC"
-    ).format(columns=_RETURNING)
+    query = sql.SQL("SELECT {columns} FROM projects ORDER BY created_at DESC").format(
+        columns=_RETURNING
+    )
 
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query)

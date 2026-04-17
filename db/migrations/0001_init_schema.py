@@ -144,11 +144,19 @@ def upgrade() -> None:
         op.execute("ALTER TABLE items ADD COLUMN embedding VECTOR(1024)")
 
     # Indexes from Design §1.1
-    op.execute("CREATE INDEX idx_items_work_unit ON items(work_unit_id) WHERE work_unit_id IS NOT NULL")
-    op.execute("CREATE INDEX idx_items_source_ref ON items(source_ref) WHERE source_ref IS NOT NULL")
-    op.execute("CREATE INDEX idx_items_source_page ON items(source_type, source_page_id) WHERE source_type IS NOT NULL")
+    op.execute(
+        "CREATE INDEX idx_items_work_unit ON items(work_unit_id) WHERE work_unit_id IS NOT NULL"
+    )
+    op.execute(
+        "CREATE INDEX idx_items_source_ref ON items(source_ref) WHERE source_ref IS NOT NULL"
+    )
+    op.execute(
+        "CREATE INDEX idx_items_source_page ON items(source_type, source_page_id) WHERE source_type IS NOT NULL"
+    )
     # Indexes from 구현계획 §2.1
-    op.execute("CREATE INDEX idx_items_stable_key ON items(stable_section_key) WHERE stable_section_key IS NOT NULL")
+    op.execute(
+        "CREATE INDEX idx_items_stable_key ON items(stable_section_key) WHERE stable_section_key IS NOT NULL"
+    )
     op.execute("CREATE INDEX idx_items_content_hash ON items(content_hash)")
     op.execute("""
         CREATE UNIQUE INDEX uniq_items_source_content
@@ -160,7 +168,9 @@ def upgrade() -> None:
     op.execute("CREATE INDEX idx_items_project_type ON items(project_id, item_type)")
     op.execute("CREATE INDEX idx_items_system_ids ON items USING GIN(system_ids)")
     op.execute("CREATE INDEX idx_items_tags ON items USING GIN(tags)")
-    op.execute("CREATE INDEX idx_items_supersedes ON items(supersedes_id) WHERE supersedes_id IS NOT NULL")
+    op.execute(
+        "CREATE INDEX idx_items_supersedes ON items(supersedes_id) WHERE supersedes_id IS NOT NULL"
+    )
     op.execute("CREATE INDEX idx_items_project_created ON items(project_id, created_at DESC)")
 
     # ── 6. links ─────────────────────────────────────────────────
@@ -212,7 +222,9 @@ def upgrade() -> None:
             created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
         )
     """)
-    op.execute("CREATE INDEX idx_terms_pending ON glossary_terms(group_id) WHERE status = 'pending'")
+    op.execute(
+        "CREATE INDEX idx_terms_pending ON glossary_terms(group_id) WHERE status = 'pending'"
+    )
     op.execute("CREATE INDEX idx_terms_normalized ON glossary_terms(normalized)")
 
     # ── 9. glossary_rejections (Design §1.3 / §5.2.2) ───────────
@@ -289,7 +301,9 @@ def upgrade() -> None:
             updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
         )
     """)
-    op.execute("CREATE INDEX idx_sync_jobs_pending ON sync_jobs(scheduled_at) WHERE status = 'pending'")
+    op.execute(
+        "CREATE INDEX idx_sync_jobs_pending ON sync_jobs(scheduled_at) WHERE status = 'pending'"
+    )
     op.execute("""
         CREATE UNIQUE INDEX uniq_sync_jobs_active
             ON sync_jobs(source_type, source_page_id)
