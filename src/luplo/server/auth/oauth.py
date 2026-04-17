@@ -7,6 +7,8 @@ registered on ``app.state.oauth`` at startup.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from authlib.integrations.starlette_client import OAuth
 
 from luplo.server.config import LuploServerSettings
@@ -18,9 +20,14 @@ def setup_oauth(settings: LuploServerSettings) -> OAuth:
     If neither GitHub nor Google credentials are configured, returns an
     empty registry — OAuth routes will return 404 for disabled providers.
     """
+    # authlib ships incomplete type stubs for the registry: the ``register``
+    # method's parameters are declared untyped, so pyright in strict mode
+    # cannot verify keyword arguments.  Treat the registry as ``Any`` at
+    # this boundary — runtime behaviour is covered by tests.
     oauth = OAuth()
+    registry = cast("Any", oauth)
     if settings.github_enabled:
-        oauth.register(
+        registry.register(
             name="github",
             client_id=settings.github_client_id,
             client_secret=settings.github_client_secret,
@@ -30,7 +37,7 @@ def setup_oauth(settings: LuploServerSettings) -> OAuth:
             client_kwargs={"scope": "read:user user:email"},
         )
     if settings.google_enabled:
-        oauth.register(
+        registry.register(
             name="google",
             client_id=settings.google_client_id,
             client_secret=settings.google_client_secret,
@@ -49,12 +56,11 @@ async def fetch_github_email(client: object, token: dict[str, object]) -> str | 
     primary email is private — use ``/user/emails`` to find the verified
     primary one.
     """
-    # Typed as object to avoid pulling authlib types into the public API.
-    from authlib.integrations.starlette_client import StarletteOAuth2App
-
-    app: StarletteOAuth2App = client  # type: ignore[assignment]
+    # authlib's starlette OAuth2App does not ship typed method signatures
+    # for .get() / response.json(); cast to ``Any`` at the boundary.
+    app = cast("Any", client)
     resp = await app.get("user/emails", token=token)
-    data = resp.json()
+    data = cast("list[dict[str, Any]]", resp.json())
     for entry in data:
         if entry.get("primary") and entry.get("verified"):
             email = entry.get("email")

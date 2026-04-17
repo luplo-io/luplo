@@ -6,17 +6,42 @@ Priority (highest wins): CLI flag → env var → ``.luplo`` file → defaults.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+import tomllib
+from dataclasses import dataclass
 from pathlib import Path
-
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib  # type: ignore[no-redef]
+from typing import TypedDict, cast
 
 CONFIG_FILENAME = ".luplo"
 DEFAULT_DB_URL = "postgresql://localhost/luplo"
 DEFAULT_RESEARCH_TTL_DAYS = 90
+
+
+class _BackendSection(TypedDict, total=False):
+    type: str
+    db_url: str
+    server_url: str
+
+
+class _ProjectSection(TypedDict, total=False):
+    id: str
+    name: str
+
+
+class _ActorSection(TypedDict, total=False):
+    id: str
+    name: str
+    email: str
+
+
+class _ResearchSection(TypedDict, total=False):
+    ttl_days: int | str
+
+
+class _ConfigFile(TypedDict, total=False):
+    backend: _BackendSection
+    project: _ProjectSection
+    actor: _ActorSection
+    research: _ResearchSection
 
 
 @dataclass(slots=True)
@@ -55,7 +80,7 @@ def load_config() -> LuploConfig:
     config_path = find_config_file()
     if config_path:
         with open(config_path, "rb") as f:
-            data = tomllib.load(f)
+            data = cast("_ConfigFile", tomllib.load(f))
 
         backend = data.get("backend", {})
         cfg.db_url = backend.get("db_url", cfg.db_url)

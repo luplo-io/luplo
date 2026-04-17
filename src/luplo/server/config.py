@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -92,7 +92,8 @@ def _read_toml(path: Path) -> dict[str, Any]:
     flat: dict[str, Any] = {}
     for k, v in data.items():
         if isinstance(v, dict):
-            for sub_k, sub_v in v.items():
+            sub = cast("dict[str, Any]", v)
+            for sub_k, sub_v in sub.items():
                 flat[f"{k}_{sub_k}"] = sub_v
         else:
             flat[k] = v

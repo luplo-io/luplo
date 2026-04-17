@@ -19,9 +19,10 @@ not by owner. ``task`` and ``qa_check`` are strict; the others permissive.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 
 from jsonschema import Draft7Validator
+from jsonschema import validate as _jsonschema_validate
 from jsonschema.exceptions import (
     SchemaError as _JSONSchemaSchemaError,
     ValidationError as _JSONSchemaError,
@@ -71,7 +72,9 @@ async def _load_schema(conn: AsyncConnection[Any], key: str) -> dict[str, Any] |
     if not row:
         return None
     schema = row["schema"]
-    return schema if isinstance(schema, dict) else None
+    if not isinstance(schema, dict):
+        return None
+    return cast("dict[str, Any]", schema)
 
 
 async def _get_cached_schema(
@@ -176,7 +179,7 @@ async def validate_context(
     if schema is None:
         raise UnknownItemTypeError(item_type)
     try:
-        Draft7Validator(schema).validate(context)
+        _jsonschema_validate(instance=context, schema=schema, cls=Draft7Validator)
     except _JSONSchemaError as e:
         # Build a path-aware message: "context.status: 'foo' is not one of ..."
         path = ".".join(str(p) for p in e.absolute_path)

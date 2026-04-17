@@ -12,9 +12,10 @@ import os
 import subprocess
 import sys
 import uuid
+from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import Any, Optional
 
 import httpx
 import typer
@@ -70,13 +71,13 @@ def _load_token(server_url: str) -> str | None:
 
 
 def _delete_token(server_url: str) -> None:
+    import contextlib
+
     import keyring
     from keyring.errors import PasswordDeleteError
 
-    try:
+    with contextlib.suppress(PasswordDeleteError):
         keyring.delete_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}")
-    except PasswordDeleteError:
-        pass
 
 
 def _cfg_server_url(flag: str | None = None) -> str:
@@ -137,7 +138,7 @@ async def _backend() -> AsyncIterator[LocalBackend]:
         await close_pool(pool)
 
 
-def _run(coro: object) -> object:
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run an async coroutine from sync typer commands.
 
     Translates ID-resolution errors raised from the core layer into
@@ -151,18 +152,18 @@ def _run(coro: object) -> object:
     )
 
     try:
-        return asyncio.run(coro)  # type: ignore[arg-type]
+        return asyncio.run(coro)
     except AmbiguousIdError as exc:
         typer.echo(f"Error: {exc.message}", err=True)
         for mid, label in exc.matches:
             typer.echo(f"  - {mid[:12]}  {label}", err=True)
-        raise typer.Exit(2)
+        raise typer.Exit(2) from exc
     except IdTooShortError as exc:
         typer.echo(f"Error: {exc.message}", err=True)
-        raise typer.Exit(2)
+        raise typer.Exit(2) from exc
     except InvalidIdFormatError as exc:
         typer.echo(f"Error: {exc.message}", err=True)
-        raise typer.Exit(2)
+        raise typer.Exit(2) from exc
 
 
 # ── Init ─────────────────────────────────────────────────────────

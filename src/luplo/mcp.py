@@ -30,7 +30,7 @@ from mcp.server.fastmcp import FastMCP
 from luplo.config import load_config
 from luplo.core.backend.local import LocalBackend
 from luplo.core.db import close_pool, create_pool
-from luplo.core.models import ItemCreate
+from luplo.core.models import Item, ItemCreate
 
 mcp = FastMCP(
     "luplo",
@@ -686,7 +686,7 @@ async def luplo_save_decisions(
 
     # Post-v0.5: batch create items and return summary
     b = await _get_backend()
-    saved = []
+    saved: list[Item] = []
     for item_data in items:
         item = await b.create_item(item_data)
         saved.append(item)

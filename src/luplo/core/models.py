@@ -7,6 +7,14 @@ from datetime import datetime
 from typing import Any
 
 
+def _empty_context() -> dict[str, Any]:
+    return {}
+
+
+def _empty_str_list() -> list[str]:
+    return []
+
+
 # ── Core 6 ───────────────────────────────────────────────────────
 
 @dataclass(slots=True)
@@ -89,7 +97,7 @@ class Item:
     updated_at: datetime
     # Type-specific free-form fields. Schema is enforced by item_types.schema
     # via core.item_types.validate_context at create_item time.
-    context: dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=_empty_context)
 
 
 @dataclass(slots=True)
@@ -215,15 +223,15 @@ class ItemCreate:
     parent_item_id: str | None = None
     work_unit_id: str | None = None
     source_ref: str | None = None
-    system_ids: list[str] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
+    system_ids: list[str] = field(default_factory=_empty_str_list)
+    tags: list[str] = field(default_factory=_empty_str_list)
     rationale: str | None = None
     alternatives: Any = None
     confidence: str | None = None
     supersedes_id: str | None = None
     expires_at: datetime | None = None
     # Type-specific free-form fields. Validated against item_types.schema.
-    context: dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=_empty_context)
     # sync fields — only set by sync pipeline
     source_type: str | None = None
     source_page_id: str | None = None

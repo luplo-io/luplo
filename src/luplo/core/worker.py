@@ -42,9 +42,14 @@ async def run_worker(pool: AsyncConnectionPool) -> None:
     """
     logger.info("Worker starting — listening on luplo_sync_jobs")
 
-    # Dedicated connection for LISTEN (not from pool — held long-term)
+    # Dedicated connection for LISTEN (not from pool — held long-term).
+    # pool.conninfo is typed as AsyncConninfoParam (str | callable); our
+    # pools are always constructed from a str URL so the narrow is safe.
+    conninfo = pool.conninfo
+    if not isinstance(conninfo, str):
+        raise TypeError("Worker requires a connection pool built from a str URL")
     listen_conn: AsyncConnection[Any] = await AsyncConnection.connect(
-        pool.conninfo, autocommit=True
+        conninfo, autocommit=True
     )
 
     try:
