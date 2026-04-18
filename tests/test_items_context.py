@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from luplo.core.item_types import ContextValidationError, UnknownItemTypeError
+from luplo.core.errors import ContextValidationError, UnknownItemTypeError
 from luplo.core.items import create_item, get_item, list_items
 from luplo.core.models import ItemCreate
 

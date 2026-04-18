@@ -559,7 +559,6 @@ async def expand_query(
 
     normalised = [w.lower() for w in words]
 
-    # Step 1: Find group_id for each input word
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             "SELECT gt.normalized, gt.group_id"
@@ -576,7 +575,6 @@ async def expand_query(
 
     group_ids = list(set(word_to_group.values()))
 
-    # Step 2: Get all approved surfaces per group
     group_surfaces: dict[str, list[str]] = {}
     if group_ids:
         async with conn.cursor(row_factory=dict_row) as cur:
@@ -589,7 +587,6 @@ async def expand_query(
             for row in await cur.fetchall():
                 group_surfaces.setdefault(row["group_id"], []).append(row["surface"])
 
-    # Step 3: Build expanded query parts
     parts: list[str] = []
     for word, norm in zip(words, normalised, strict=True):
         gid = word_to_group.get(norm)

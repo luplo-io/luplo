@@ -36,10 +36,7 @@ from psycopg.types.json import Jsonb
 from luplo.core.errors import ContextValidationError, UnknownItemTypeError
 from luplo.core.models import ItemType
 
-# Re-export for callers who already import these from item_types.
 __all__ = [
-    "ContextValidationError",
-    "UnknownItemTypeError",
     "create_item_type",
     "get_item_type",
     "invalidate_cache",

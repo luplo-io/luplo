@@ -23,7 +23,7 @@ from luplo.config import CONFIG_FILENAME, load_config, write_config
 from luplo.core.backend.local import LocalBackend
 from luplo.core.db import close_pool, create_pool
 from luplo.core.impact import ImpactNode, ImpactResult
-from luplo.core.models import ItemCreate
+from luplo.core.models import Item, ItemCreate
 
 KEYRING_SERVICE = "luplo"
 KEYRING_TOKEN_KEY = "token"
@@ -139,13 +139,7 @@ async def _backend() -> AsyncIterator[LocalBackend]:
 
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
-    """Run an async coroutine from sync typer commands.
-
-    Translates domain errors raised from the core layer (ambiguous /
-    malformed IDs, not-found rows) into actionable messages and a
-    non-zero exit code, so the user sees something useful instead of a
-    stack trace.
-    """
+    """Run a coroutine; translate domain errors to CLI exit codes."""
     from luplo.core.errors import (
         AmbiguousIdError,
         IdTooShortError,
@@ -233,7 +227,6 @@ def init(
     a_id = actor_id or str(uuid.uuid4())
     config_path = Path.cwd() / CONFIG_FILENAME
 
-    # 1. Write .luplo
     write_config(
         config_path,
         db_url=db_url,
@@ -246,7 +239,6 @@ def init(
     )
     typer.echo(f"Created {CONFIG_FILENAME}")
 
-    # 2. Run migrations
     typer.echo("Running migrations...")
     project_root = Path(__file__).resolve().parent.parent.parent
     alembic_ini = project_root / "alembic.ini"
@@ -267,7 +259,6 @@ def init(
     else:
         typer.echo("Warning: alembic.ini not found, skipping migrations.", err=True)
 
-    # 3. Seed project + actor
     async def _seed() -> None:
         pool = await create_pool(db_url)
         try:
@@ -288,7 +279,6 @@ def init(
     typer.echo(f"Project '{p_name}' ({project}) ready.")
     typer.echo(f"Actor '{a_name}' ({a_id[:8]}…) <{email}> ready.")
 
-    # 4. Add .luplo to .gitignore
     gitignore = Path.cwd() / ".gitignore"
     if gitignore.exists():
         content = gitignore.read_text()
@@ -730,19 +720,8 @@ def _render_impact_flat(result: ImpactResult) -> str:
 def _render_impact_json(result: ImpactResult) -> str:
     import dataclasses
     import json
-    from datetime import datetime
-    from typing import cast
 
-    def _asdict(obj: Any) -> Any:
-        if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-            return {f.name: _asdict(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
-        if isinstance(obj, list):
-            return [_asdict(x) for x in cast("list[Any]", obj)]
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return obj
-
-    return json.dumps(_asdict(result), indent=2, default=str)
+    return json.dumps(dataclasses.asdict(result), indent=2, default=str)
 
 
 @app.command("impact")
@@ -923,11 +902,8 @@ def worker_start() -> None:
 # ── Tasks ────────────────────────────────────────────────────────
 
 
-def _print_task(item: object) -> None:
+def _print_task(item: Item) -> None:
     """Compact one-liner for a task item."""
-    from luplo.core.models import Item
-
-    assert isinstance(item, Item)
     status = item.context.get("status", "?")
     sort_order = item.context.get("sort_order", "?")
     typer.echo(f"  {item.id[:8]}  [{status:<11}] (#{sort_order:>3}) {item.title}")
@@ -1183,10 +1159,7 @@ def task_in_progress(work_unit: str = typer.Option(..., "--wu", "-w")) -> None:
 # ── QA Checks ────────────────────────────────────────────────────
 
 
-def _print_qa(item: object) -> None:
-    from luplo.core.models import Item
-
-    assert isinstance(item, Item)
+def _print_qa(item: Item) -> None:
     status = item.context.get("status", "?")
     coverage = item.context.get("coverage", "?")
     areas = ",".join(item.context.get("areas") or []) or "—"

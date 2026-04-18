@@ -819,8 +819,6 @@ async def luplo_history_query(
         semantic_impacts: Filter by impact types (e.g. ["numeric_change", "rule_addition"]).
         limit: Maximum entries.
     """
-    from datetime import datetime
-
     b = await _get_backend()
     since_dt = datetime.fromisoformat(since).replace(tzinfo=UTC) if since else None
 

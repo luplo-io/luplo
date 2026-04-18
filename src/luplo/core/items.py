@@ -60,14 +60,7 @@ _RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in ITEM_COLUMNS)
 
 
 def row_to_item(row: dict[str, Any]) -> Item:
-    """Convert a dict-row from psycopg into an ``Item`` dataclass.
-
-    Tolerates extra columns (e.g. ``search_tsv``, ``embedding``) returned
-    by ``SELECT items.*`` by filtering to known dataclass fields.
-    Normalises NULL arrays to empty lists, ensures ``source_version`` has
-    a fallback default, coerces ``actor_id`` (UUID after 0002) to str, and
-    falls back to an empty dict for ``context`` (NULL-safe).
-    """
+    """Convert a dict-row into an Item, dropping unknown columns and NULL-safe defaults."""
     filtered = {k: v for k, v in row.items() if k in _ITEM_FIELDS}
     filtered["system_ids"] = filtered.get("system_ids") or []
     filtered["tags"] = filtered.get("tags") or []

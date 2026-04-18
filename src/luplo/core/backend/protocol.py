@@ -528,7 +528,7 @@ class Backend(Protocol):
         query: str,
         project_id: str,
     ) -> str:
-        """Glossary expansion: 'vendor budget' → '(vendor|shop|NPC벤더) & (budget|goldpool)'."""
+        """Glossary expansion: 'auth budget' → '(auth|signin) & (budget|goldpool)'."""
         ...
 
     # ── History ──────────────────────────────────────────────────

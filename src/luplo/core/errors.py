@@ -1,4 +1,4 @@
-"""Domain error hierarchy — single module per Phase A 친화 에러 컨벤션.
+"""Domain error hierarchy — one module for every caller-facing exception.
 
 Every error carries an ``http_status`` hint so the FastAPI layer can
 translate them with one mapping. CLI/MCP layers turn them into exit codes

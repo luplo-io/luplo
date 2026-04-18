@@ -60,19 +60,10 @@ async def _resolve_head(
     for_update: bool = False,
     project_id: str | None = None,
 ) -> Item:
-    """Walk the supersede chain forward from *any_chain_id* and return the head.
+    """Walk the supersede chain forward and return the task head.
 
-    Accepts a full UUID or a hex prefix (≥8 chars). When a prefix matches
-    multiple seed rows the recursive CTE walks each forward; rows in the
-    same chain naturally collapse to one head, so prefix matches inside a
-    single chain are not ambiguous. Truly distinct chain heads raise
-    :class:`AmbiguousIdError`.
-
-    Raises:
-        TaskNotFoundError: When no row matches or the resolved head is
-            not a task.
-        AmbiguousIdError: When the prefix resolves to multiple heads
-            across distinct chains.
+    Raises TaskNotFoundError when nothing matches or the head is not a
+    task, AmbiguousIdError when the prefix resolves to distinct heads.
     """
     params: dict[str, Any] = {}
     seed = build_seed_clause(any_chain_id, params)

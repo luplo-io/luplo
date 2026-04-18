@@ -54,11 +54,9 @@ async def _resolve_head(
     *,
     project_id: str | None = None,
 ) -> Item:
-    """Walk the supersede chain forward and return the head qa_check row.
+    """Walk the supersede chain forward and return the qa_check head.
 
-    Accepts a full UUID or hex prefix (≥8 chars). Multiple seed matches
-    in the same supersede chain collapse to one head; matches across
-    distinct chains raise :class:`AmbiguousIdError`.
+    Raises QACheckNotFoundError / AmbiguousIdError.
     """
     params: dict[str, Any] = {}
     seed = build_seed_clause(any_chain_id, params)

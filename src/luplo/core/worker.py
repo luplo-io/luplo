@@ -110,10 +110,10 @@ async def _process_one_job(pool: AsyncConnectionPool, job_id: int, payload: str 
 
         logger.info("Sync job %d completed", job_id)
 
-    except Exception:
+    except Exception as exc:
         logger.exception("Sync job %d failed", job_id)
         try:
             async with pool.connection() as conn:
-                await fail_sync_job(conn, job_id, error=str(Exception))
+                await fail_sync_job(conn, job_id, error=str(exc))
         except Exception:
             logger.exception("Failed to record failure for job %d", job_id)

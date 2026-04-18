@@ -114,8 +114,7 @@ class LocalBackend:
         role: str | None = None,
         external_ids: dict[str, str] | None = None,
     ) -> Actor:
-        # email is required at the DB layer after 0002; synthesise a
-        # placeholder for callers that didn't specify one (tests, seed scripts).
+        # 0002 made actors.email NOT NULL; synthesise one for seed scripts.
         actual_email = email if email is not None else f"{id}@placeholder.local"
         async with self.pool.connection() as conn:
             return await actors.create_actor(
@@ -314,12 +313,7 @@ class LocalBackend:
         new_item_id: str,
         actor_id: str,
     ) -> None:
-        """Demote passed qa_checks targeting *old_item_id* to 'pending'.
-
-        In-place UPDATE per P8 (system-derived state change, not a
-        human-decided edit). Each affected qa_check gets one
-        ``item.update`` audit entry with revalidation metadata.
-        """
+        """Demote passed qa_checks targeting old_item_id to 'pending' (P8: system-derived)."""
         async with conn.cursor() as cur:
             await cur.execute(
                 """

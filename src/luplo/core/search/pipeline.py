@@ -58,7 +58,6 @@ async def search(
     if not query.strip():
         return []
 
-    # Step 1: Parse the user dialect, expand only eligible tokens.
     clauses = parse_user_query(query)
     if not clauses:
         return []
@@ -77,7 +76,6 @@ async def search(
     if not tsquery_str:
         return []
 
-    # Step 2: tsquery retrieval
     fetch_limit = limit * 3  # over-fetch for reranking headroom
     candidates = await _tsquery_search(
         conn,
@@ -91,7 +89,6 @@ async def search(
     if not candidates:
         return []
 
-    # Step 3: Optional vector rerank
     use_vectors = embedding_backend is not None and not isinstance(
         embedding_backend, NullEmbedding
     )
