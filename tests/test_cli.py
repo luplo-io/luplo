@@ -547,6 +547,21 @@ def test_whoami_not_logged_in(env: dict[str, str]) -> None:
     assert "Not logged in" in r.output
 
 
+def test_whoami_no_keyring_backend(env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Headless CI has no keyring backend — must still report 'Not logged in',
+    not surface a NoKeyringError stack trace."""
+    import keyring
+    from keyring.errors import NoKeyringError
+
+    def _raise(*_a: object, **_k: object) -> None:
+        raise NoKeyringError("No recommended backend")
+
+    monkeypatch.setattr(keyring, "get_password", _raise)
+    r = runner.invoke(app, ["whoami", "--server", "http://nowhere.invalid"], env=env)
+    assert r.exit_code == 1
+    assert "Not logged in" in r.output
+
+
 def test_token_refresh_not_logged_in(env: dict[str, str]) -> None:
     r = runner.invoke(app, ["token", "refresh", "--server", "http://nowhere.invalid"], env=env)
     assert r.exit_code == 1

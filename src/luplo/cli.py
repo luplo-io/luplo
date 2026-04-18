@@ -60,23 +60,40 @@ app.add_typer(server_app)
 
 def _store_token(server_url: str, token: str) -> None:
     import keyring
+    from keyring.errors import KeyringError
 
-    keyring.set_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}", token)
+    try:
+        keyring.set_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}", token)
+    except KeyringError as e:
+        typer.echo(
+            f"Error: could not store token in system keyring ({e}). "
+            "Install a keyring backend (e.g. `secret-tool` on Linux) "
+            "or run on a desktop session with a keychain.",
+            err=True,
+        )
+        raise typer.Exit(1) from e
 
 
 def _load_token(server_url: str) -> str | None:
+    """Read the stored token. Returns None when no token is set OR when no
+    keyring backend is available — a missing backend is indistinguishable
+    from "not logged in" from the caller's perspective."""
     import keyring
+    from keyring.errors import KeyringError
 
-    return keyring.get_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}")
+    try:
+        return keyring.get_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}")
+    except KeyringError:
+        return None
 
 
 def _delete_token(server_url: str) -> None:
     import contextlib
 
     import keyring
-    from keyring.errors import PasswordDeleteError
+    from keyring.errors import KeyringError
 
-    with contextlib.suppress(PasswordDeleteError):
+    with contextlib.suppress(KeyringError):
         keyring.delete_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}")
 
 
