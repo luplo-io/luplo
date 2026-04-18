@@ -8,6 +8,55 @@ rewriting, and vectors — when present — only re-order the candidates
 that tsquery already found. If retrieval finds nothing, the answer is
 **nothing** — not a synthesized guess.
 
+## Query dialect
+
+The search surface accepts a tiny web-search-style dialect. The grammar
+is intentionally small; nothing else parses.
+
+| Syntax | Meaning | Example |
+|---|---|---|
+| `word` | required term (AND-joined with siblings) | `auth budget` |
+| `"exact phrase"` | adjacent-word match | `"JWT rotation"` |
+| `word OR word` | disjunction (the literal word `OR`, uppercase) | `auth OR password` |
+| `-word` | negated term | `auth -session` |
+| `-"exact phrase"` | negated phrase | `auth -"session cookie"` |
+
+Clauses are AND-joined by default. An `OR` run folds its neighbours
+into a disjunction group. Glossary expansion is applied only to
+**required** and **OR-group** terms — phrases and negated tokens pass
+through literally (expanding a negation would silently re-include the
+concept the user excluded).
+
+### What is not supported
+
+- **Parentheses** for grouping. Nested tsquery-native syntax like
+  `(!A & B) & !C` does not parse. Use
+  [De Morgan's laws](https://en.wikipedia.org/wiki/De_Morgan%27s_laws)
+  to rewrite: `(!A & B) & !C` becomes `B -A -C`; `(A | B) & !(C | D)`
+  becomes `A OR B -C -D`.
+- **Operators as literals.** `&`, `|`, `!`, `(`, `)` are passed through
+  as part of the word and almost always return zero hits under the
+  `simple` dictionary. Avoid typing them unless you actually want the
+  character in the lexeme.
+- **Regex / fuzzy matching.** Out of scope — see the philosophy doc's
+  honesty-over-coverage commitment.
+
+### Worked example
+
+The filter "women who are not men and not in their 50s":
+
+```
+# Literal tsquery you might type: (!남자 & 여자) & !50대
+# luplo dialect equivalent:
+여자 -남자 -50대
+```
+
+Both describe the same set. The dialect version parses; the literal
+tsquery version does not. If the negated-OR case (`!(A & B)`, which
+cannot be rewritten with plain negation) starts coming up, open an
+issue — parens support is a declared v0.7 candidate, not a forever
+"no".
+
 ## The four stages
 
 ```
