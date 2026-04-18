@@ -1,0 +1,28 @@
+# Coverage gate for the repo.
+#
+# The "project" target guards overall coverage; "patch" guards the diff
+# of each PR. Thresholds are ratcheted as we land more tests:
+#
+#   current floor: 85% (Phases 1-2 of the test expansion)
+#   patch target: 85% (new code must not regress the baseline)
+#
+# When a subsequent expansion pushes the floor up, bump `project.target`
+# to lock the new baseline in. Never lower it.
+
+coverage:
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 1%
+        informational: false
+    patch:
+      default:
+        target: 85%
+        threshold: 1%
+        informational: false
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
