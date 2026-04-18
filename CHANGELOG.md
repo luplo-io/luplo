@@ -11,6 +11,65 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-04-18
+
+A v0.6 follow-up focused on the deterministic rule pack, one residual
+logging bug, a wide AI-smell cleanup, and a large test-coverage push.
+No schema changes. No public API removals.
+
+### Added
+
+- **Rule pack (`lp check`)** — deterministic checks over the item
+  graph with five starter rules: `missing_rationale` (error),
+  `undated_retention` (warn), `dangling_edge` (warn),
+  `unresolved_conflict` (warn), and `unlinked_policy` (info). Rules
+  are SQL + Python only; no LLM, no plugin runtime. Surfaces on
+  `lp check [--rule NAME]... [--severity LEVEL] [--list]`, MCP tool
+  `luplo_check`, and `GET /checks?project_id=&rule=`. Non-zero CLI
+  exit on any `error`-severity finding.
+- **`.luplo [checks] disabled_rules`** — per-project rule disable.
+  A disabled rule is skipped even when the caller asks for it
+  explicitly via `--rule`; project-level disable is the stronger
+  signal.
+- **`docs/reference/checks.md`** — one section per rule plus
+  "what the rule pack is not" (no compliance certification, no
+  LLM auditor, no plugin runtime).
+
+### Fixed
+
+- **`core/worker.py:117`** — `fail_sync_job(..., error=str(Exception))`
+  was logging the string `"<class 'Exception'>"` because the except
+  clause had no binding. Fixed to `except Exception as exc: ...
+  str(exc)` so real failure messages reach the sync-job record.
+
+### Changed
+
+- **AI-smell sweep across `src/luplo/`** — removed Step 1/2/3
+  scaffolding comments from `cli.py init`, `core/search/pipeline.py
+  search`, and `core/glossary.py expand_query`. Private-helper
+  docstring compression on `_resolve_head` (tasks + qa),
+  `row_to_item`, `_run`, `_revalidate_qa_for`. `_print_task` and
+  `_print_qa` dropped their `item: object` + isinstance-assert
+  defence in favour of a `item: Item` signature. `errors.py`
+  module docstring de-romanised. `_render_impact_json`'s hand-rolled
+  `_asdict` walk replaced with stdlib `dataclasses.asdict`.
+  `item_types.__all__` no longer re-exports error classes (single
+  source: `core.errors`). Misc: redundant inline imports, Korean
+  example in a Protocol docstring.
+
+### Tests + CI
+
+- **+119 new tests** (300 → 419): `tests/test_auth_helpers.py` (unit
+  coverage for password/jwt/pkce/domain_filter helpers),
+  `tests/test_remote_backend.py` (HTTP round-trips through a stubbed
+  transport), expanded `tests/test_cli.py` (top-level and subcommand
+  groups end-to-end), expanded `tests/test_mcp.py` (smoke → real tool
+  invocations with a module-scoped backend fixture), expanded
+  `tests/test_auth_routes.py` (paths not covered by password-reset
+  work).
+- **`codecov.yml`** — project + patch coverage gate with a ratcheting
+  threshold so merges that lower coverage fail CI.
+
 ## [0.6.0] - 2026-04-17
 
 Narrative v0.6 ships. PyPI version jumps 0.1.0 → 0.6.0 to align the
@@ -101,6 +160,7 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/luplo-io/luplo/releases/tag/v0.6.1
 [0.6.0]: https://github.com/luplo-io/luplo/releases/tag/v0.6.0
 [0.1.0]: https://github.com/luplo-io/luplo/releases/tag/v0.1.0
