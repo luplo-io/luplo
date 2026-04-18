@@ -11,6 +11,25 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-04-18
+
+Hotfix on top of 0.6.1 — `lp login` / `lp whoami` / `lp logout`
+crashed on headless Linux (including CI runners) because the
+`keyring` library raises `NoKeyringError` when no backend is
+available and v0.6.1 did not guard the call sites.
+
+### Fixed
+
+- **`cli.py` keyring call sites** — `_store_token` now catches
+  `KeyringError` and prints an actionable message pointing at
+  `secret-tool` / desktop session before exiting 1. `_load_token`
+  returns `None` when the backend is unavailable (indistinguishable
+  from "not logged in" at the caller). `_delete_token` broadens
+  `contextlib.suppress` from `PasswordDeleteError` to `KeyringError`.
+- **`tests/test_cli.py`** — regression test asserting `lp whoami`
+  prints "Not logged in" when the backend is unavailable. This is
+  the exact failure that broke CI on the 0.6.1 release commit.
+
 ## [0.6.1] - 2026-04-18
 
 A v0.6 follow-up focused on the deterministic rule pack, one residual
@@ -160,7 +179,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/luplo-io/luplo/releases/tag/v0.6.2
 [0.6.1]: https://github.com/luplo-io/luplo/releases/tag/v0.6.1
 [0.6.0]: https://github.com/luplo-io/luplo/releases/tag/v0.6.0
 [0.1.0]: https://github.com/luplo-io/luplo/releases/tag/v0.1.0
