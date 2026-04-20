@@ -181,6 +181,53 @@ their provider.
   (admin-provisioned) or the login is rejected.
 - `allowed_email_domains` — additional domain allowlist.
 
+## Password reset (magic link)
+
+Remote mode accepts a two-step reset flow for password-authenticated
+actors. OAuth-only actors are not affected (they have no password to
+reset).
+
+```
+POST /auth/reset-request     body: email=<address>
+POST /auth/reset-confirm     body: token=<plaintext>, new_password=<new>
+```
+
+### `/auth/reset-request`
+
+Always returns `200 {"ok": true}`, whether the email is registered
+or not. The response shape is identical in both cases so the endpoint
+cannot be used to enumerate accounts. When the email does exist, the
+server issues a single-use token with a 15-minute TTL, stores only
+the argon2id hash, and emails the plaintext via the configured
+:class:`EmailSender`.
+
+### `/auth/reset-confirm`
+
+Verifies the token, rotates the actor's password hash, and marks the
+token used — all in one transaction. A concurrent replay fails the
+token's `used_at IS NULL` guard. The response is `200 {"ok": true}`
+on success; every failure path (unknown token, expired, reused, weak
+new password) returns a single generic
+`400 "Invalid or expired token"` so failures never leak *why*.
+
+### Email backend
+
+| Env | Effect |
+|---|---|
+| `LUPLO_EMAIL_BACKEND` unset or `logging` | `LoggingEmailSender` writes the email body (including the reset URL) to stderr. Dev default — never use in production. |
+| `LUPLO_EMAIL_BACKEND=smtp` | `SMTPEmailSender.from_env()` reads `LUPLO_SMTP_HOST`, `LUPLO_SMTP_PORT` (default 587), `LUPLO_SMTP_USER` / `LUPLO_SMTP_PASSWORD` (optional, login auth), `LUPLO_SMTP_FROM` (required), `LUPLO_SMTP_STARTTLS` (default `1`). |
+
+Hosted transactional services (SES, Postmark, Resend) plug in by
+implementing the tiny `EmailSender` protocol in
+`src/luplo/server/auth/email.py`.
+
+### Known gap
+
+JWTs issued before a reset remain valid until their normal TTL —
+there is no token denylist in v0.6. Rotate `LUPLO_JWT_SECRET` (and
+accept the server-wide logout) if a password reset needs to revoke
+active sessions immediately.
+
 ## Operational notes
 
 - **Rotation.** To rotate `LUPLO_JWT_SECRET`, restart the server with

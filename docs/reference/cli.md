@@ -77,7 +77,20 @@ Add an item.
 
 ### `lp items search <query>`
 
-Glossary-expanded tsquery search. Supports `-n, --limit` (default 10).
+Glossary-expanded tsquery search. The query accepts a small
+web-search-style dialect (full grammar in
+{doc}`../concepts/search-pipeline`):
+
+| Syntax | Meaning |
+|---|---|
+| `word` | required term (AND) |
+| `"exact phrase"` | phrase match |
+| `word OR word` | disjunction (literal uppercase `OR`) |
+| `-word` | negation |
+| `-"exact phrase"` | negated phrase |
+
+Parentheses are not parsed; use De Morgan rewrites
+(`(!A & B) & !C` → `B -A -C`). Supports `-n, --limit` (default 10).
 
 ### `lp items show <item-id>`
 
@@ -103,6 +116,40 @@ Find in-progress work units whose title matches the query.
 | `--status` | `done` (default) or `abandoned`. |
 | `-f`, `--force` | Close even if an `in_progress` task remains. |
 
+## Audit (blast radius)
+
+### `lp impact <item-id>`
+
+Traverse outgoing typed edges (`depends` / `blocks` / `supersedes` /
+`conflicts`) from *item-id* and print every reachable item with the
+edge type that first reached it. Cycles are broken automatically;
+each item appears once, at its shortest-path depth. Traversal stops
+at five hops server-side — this is a design principle, not a
+performance limit (see {doc}`../concepts/philosophy`).
+
+| Flag | Description |
+|---|---|
+| `-d`, `--depth` | Max depth, 1–5 (default 5). Values outside the range are rejected by the CLI. |
+| `-f`, `--format` | `tree` (default), `flat`, or `json`. All three expose the same payload; JSON is what an LLM should cite. |
+
+Exits 1 when the root item is not found, 2 when depth is out of
+range.
+
+## Rule pack
+
+### `lp check`
+
+Run the deterministic rule pack over the project graph. Exits
+non-zero if any finding has severity `error`. See
+{doc}`checks` for each rule and the `.luplo [checks] disabled_rules`
+project-level override.
+
+| Flag | Description |
+|---|---|
+| `-r`, `--rule` | Repeat to restrict to specific rules by name. Disabled rules are skipped even when named here. |
+| `-s`, `--severity` | Display threshold: `error`, `warn` (default), `info`. Does not affect the exit code. |
+| `--list` | Print every registered rule with its default severity and exit. |
+
 ## Tasks
 
 Tasks live in `items` with `item_type='task'`.
@@ -113,9 +160,10 @@ Tasks live in `items` with `item_type='task'`.
 | `lp task ls --wu <work-id>` | Chain heads ordered by `sort_order`. Optional `-s/--status`. |
 | `lp task show <task-id>` | Single task, resolved to chain head. |
 | `lp task start <task-id>` | `proposed` → `in_progress`. Enforces one per work unit. |
-| `lp task done <task-id>` | `in_progress` → `done`. |
+| `lp task done <task-id>` | `in_progress` → `done`. `--summary` attaches an outcome. `--propose-decision` prints a draft decision item derived from the task; the draft is NOT inserted. |
 | `lp task blocked <task-id>` | `in_progress` → `blocked`. Auto-creates a decision item. |
 | `lp task skip <task-id>` | Any → `skipped` (terminal). |
+| `lp task edit <task-id>` | Edit title / body / `sort_order` via supersede. `--title`, `--body`, `--sort`. Status is preserved — a done task can still have a typo fixed. |
 | `lp task reorder <task-id> [task-id ...]` | In-place `sort_order` update, single audit row. |
 | `lp task in-progress --wu <work-id>` | Show the one `in_progress` task, if any. |
 

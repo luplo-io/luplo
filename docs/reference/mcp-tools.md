@@ -84,6 +84,28 @@ Query the `items_history` table for semantic changes.
 
 See {doc}`semantic-impact` for the seven categories.
 
+## Audit (blast radius)
+
+### `luplo_impact`
+
+Traverse outgoing typed edges from *item_id* and return the list of
+items reachable within *depth* hops (1–5, capped server-side). Every
+hop carries the edge type that first reached the item at its
+shortest-path depth; cycles are broken automatically; each item
+appears once. Scope is always project-local.
+
+```json
+{
+  "item_id": "<uuid-or-prefix>",
+  "project_id": "myapp",
+  "depth": 5
+}
+```
+
+Returns markdown a model can cite. The same payload (structured JSON)
+is available via `GET /items/{item_id}/impact`. See
+{doc}`../concepts/philosophy` for why depth stops at five.
+
 ## Work units
 
 ### `luplo_work_open`
@@ -134,13 +156,23 @@ Transitions `proposed` → `in_progress`. Enforces one per work unit via
 
 ### `luplo_task_done`
 
-Transitions `in_progress` → `done`.
+Transitions `in_progress` → `done`. Optional `summary` attaches an
+outcome string. When `propose_decision=true`, the response appends a
+draft `decision` item derived from the task (never inserted — the
+human decides whether to save it via `luplo_item_upsert`). Returns
+`None` for the draft when the task has neither body nor summary.
 
 ### `luplo_task_block`
 
 `in_progress` → `blocked`. Automatically creates a `decision` item
 documenting the block reason (see `block_task` semantics in
 {doc}`../guides/tasks-and-qa`).
+
+### `luplo_task_edit`
+
+Edit a task's `title` / `body` / `sort_order` by creating a supersede
+row. Status is preserved — a `done` task can still get a typo fixed.
+Passing no editable fields is a no-op that returns the current head.
 
 ## QA checks
 
@@ -165,6 +197,29 @@ Pass one of the filters (task / item / work unit) to scope the list.
 ### `luplo_qa_pass` / `luplo_qa_fail`
 
 Drive a QA check to `passed` / `failed` terminal states.
+
+## Rule pack
+
+### `luplo_check`
+
+Run the deterministic rule pack over *project_id* and return findings
+as markdown. Rules are SQL + Python only; no LLM, no external calls.
+The set is fixed per release — see {doc}`checks` for each rule and
+the `.luplo [checks] disabled_rules` override.
+
+```json
+{
+  "project_id": "myapp",
+  "rule": "",
+  "severity": "warn"
+}
+```
+
+- Empty `rule` runs every enabled rule; setting it restricts to one.
+- `severity` is the display threshold (`error` / `warn` / `info`).
+  It does not change the set of findings collected, only which ones
+  appear in the response.
+- The HTTP equivalent is `GET /checks?project_id=&rule=`.
 
 ## Philosophy-aligned behaviours
 
