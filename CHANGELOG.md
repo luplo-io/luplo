@@ -11,6 +11,8 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-04-21
+
 ### Added
 
 - **`luplo_item_show` MCP tool** — returns the full body, rationale, and
@@ -255,7 +257,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/luplo-io/luplo/releases/tag/v0.7.1
 [0.7.0]: https://github.com/luplo-io/luplo/releases/tag/v0.7.0
 [0.6.2]: https://github.com/luplo-io/luplo/releases/tag/v0.6.2
 [0.6.1]: https://github.com/luplo-io/luplo/releases/tag/v0.6.1
