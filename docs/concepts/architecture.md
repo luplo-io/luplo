@@ -56,12 +56,15 @@ tools) — LLMs get confused with large toolboxes. See
 ### HTTP — FastAPI
 
 `src/luplo/server/` — the Remote-mode server. Installed via the `server`
-extra (`uv sync --extra server`). Provides:
+extra (`uv sync --extra server`). A thin HTTP adapter over the core
+with **no built-in authentication** — every write handler reads the
+attribution actor from the `X-Actor` header (or
+`LUPLO_DEFAULT_ACTOR_ID` as a fallback) and the operator puts its own
+auth layer in front if the server is exposed. Provides:
 
-- Auth routes (`/auth/login`, `/auth/refresh`, OAuth start/callback,
-  admin password set).
-- Item / work-unit / search routes mirroring the core surface.
-- A minimal login page (no SPA, no React).
+- Item / work-unit / project / search / checks routes mirroring the
+  core surface.
+- `GET /health` (liveness) and `GET /ready` (DB ping).
 
 The HTTP server is not required for Local-mode usage. A solo developer
 can run CLI + MCP directly against Postgres without ever booting the

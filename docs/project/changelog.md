@@ -7,6 +7,66 @@ the migrations in `db/migrations/`.
 For the schema delta of any version, read the matching `0NNN_*.py` file
 in that directory.
 
+## v0.7.0 — luplo goes dry
+
+**Migration:** `0006_drop_auth`
+
+luplo commits to being a library. Built-in authentication is removed;
+attribution is preserved. A deployment that needs users / orgs / OAuth
+wraps luplo as a library — it does not extend luplo's schema.
+
+### Schema
+
+- **`actors`** — drop `password_hash`, `is_admin`, `last_login_at`,
+  `oauth_provider`, `oauth_subject`. The table now carries only
+  attribution metadata: `{id, name, email, role, external_ids,
+  joined_at}`. All ten FK columns that reference `actors` stay intact,
+  so no item / history / audit / work-unit / glossary data is lost.
+- **`auth_reset_tokens`** — dropped.
+
+### Surface — removed
+
+- `src/luplo/server/auth/` — 641 LOC across 10 files (JWT issuance,
+  OAuth + PKCE for GitHub and Google, argon2id password hashing,
+  magic-link reset flow, admin seed, email sender, domain filter).
+- `/auth/*` endpoints (`/login`, `/logout`, `/whoami`,
+  `/token/refresh`, `/oauth/{provider}/start`, `/oauth/{provider}/callback`,
+  `/reset-request`, `/reset-confirm`).
+- CLI commands: `lp login`, `lp logout`, `lp whoami`, `lp token refresh`,
+  `lp admin set-password`, `lp server init-secrets`, `lp server config-check`.
+- Keyring-based JWT storage on the client.
+- Env vars: `LUPLO_JWT_SECRET` / `_ALG` / `_TTL_MINUTES`,
+  `LUPLO_ADMIN_EMAIL` / `_PASSWORD_INITIAL`,
+  `LUPLO_GITHUB_CLIENT_ID` / `_SECRET`, `LUPLO_GOOGLE_CLIENT_ID` /
+  `_SECRET`, `LUPLO_SESSION_SECRET`, `LUPLO_ALLOWED_EMAIL_DOMAINS`,
+  `LUPLO_AUTO_CREATE_USERS`, `LUPLO_AUTH_DISABLED`.
+- Runtime dependencies: `authlib`, `pyjwt`, `argon2-cffi`, `jinja2`,
+  `itsdangerous` (from `[server]`); `keyring` (from core).
+
+### Surface — added
+
+- **`GET /ready`** — readiness probe that round-trips `SELECT 1`
+  through the pool. Distinct from `/health`, which only reports that
+  the process is up.
+- **`X-Actor` request header** — every write handler resolves the
+  attribution actor via the header first, then falls back to the new
+  `LUPLO_DEFAULT_ACTOR_ID` server setting. HTTP 400 when neither is
+  present. Reads do not require it.
+
+### Migration guide
+
+- Run `alembic upgrade head`. The existing `actors` rows keep their
+  identity metadata; only the deprecated auth columns disappear.
+- If you ran the server with `LUPLO_AUTH_DISABLED=1`, drop that env
+  var — there is nothing to disable.
+- If you ran real auth (JWT + cookies + OAuth), put a reverse proxy
+  in front of luplo that authenticates users and forwards
+  `X-Actor: <uuid>` downstream. For multi-tenant deployments, wrap
+  luplo as a library (`from luplo.core.backend.local import
+  LocalBackend`) and let your own app own identity.
+- CLI on the local backend: nothing to change. `lp init` still writes
+  `.luplo` with `actor.id`; every `lp` command reads from it unchanged.
+
 ## v0.6 — Audit, five refusals, password reset
 
 **Migration:** `0005_auth_reset_tokens`
