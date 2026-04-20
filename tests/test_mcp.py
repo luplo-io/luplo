@@ -31,6 +31,7 @@ def test_mcp_tools_registered() -> None:
         "luplo_work_close",
         "luplo_item_upsert",
         "luplo_item_search",
+        "luplo_item_show",
         "luplo_impact",
         "luplo_brief",
         "luplo_page_sync",
@@ -54,7 +55,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 21
+    assert len(tools) == 22
 
 
 # ── Invocation tests ────────────────────────────────────────────
@@ -173,6 +174,45 @@ async def test_mcp_item_upsert_and_search(mcp_backend: Any) -> None:
 
     results = await mcp_mod.luplo_item_search(query="vendor", project_id=_MCP_PROJECT, limit=5)
     assert "MCP vendor rule" in results
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_item_show_full_body(mcp_backend: Any) -> None:
+    """`luplo_item_show` must return the whole body + rationale, never truncated.
+
+    The preview from `luplo_item_search` caps body at 150 chars; the point of
+    this tool is to bypass that cap. A 400-char body lets us assert that
+    neither the 150-char nor the 200-char cutoff was silently applied.
+    """
+    long_body = "x" * 400
+    long_rationale = "y" * 400
+    add = await mcp_mod.luplo_item_upsert(
+        title="MCP show target",
+        project_id=_MCP_PROJECT,
+        item_type="decision",
+        body=long_body,
+        rationale=long_rationale,
+        actor_id=_MCP_ACTOR,
+    )
+    # `luplo_item_upsert` returns "Created <type>: <title> (id: <uuid>)"
+    item_id = add.rsplit("id: ", 1)[1].rstrip(")").strip()
+
+    shown = await mcp_mod.luplo_item_show(item_id=item_id, project_id=_MCP_PROJECT)
+    assert "# MCP show target" in shown
+    assert f"- id: {item_id}" in shown
+    assert "- type: decision" in shown
+    assert "## Body" in shown
+    assert long_body in shown
+    assert "## Rationale" in shown
+    assert long_rationale in shown
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_item_show_not_found(mcp_backend: Any) -> None:
+    missing = "deadbeefdeadbeefdeadbeefdeadbeef"
+    out = await mcp_mod.luplo_item_show(item_id=missing, project_id=_MCP_PROJECT)
+    assert "not found" in out
+    assert _MCP_PROJECT in out
 
 
 @pytest.mark.asyncio(loop_scope="module")

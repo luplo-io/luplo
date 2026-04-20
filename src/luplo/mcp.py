@@ -345,6 +345,54 @@ async def luplo_item_search(
 
 
 @mcp.tool()
+async def luplo_item_show(item_id: str, project_id: str) -> str:
+    """Return the full body, rationale, and metadata of a single item.
+
+    Use this when a ``luplo_item_search`` preview is truncated and the
+    full text is needed to reason about a decision, knowledge entry, or
+    document. Accepts a full UUID or ≥8-char hex prefix; prefix lookups
+    are scoped to *project_id*. Soft-deleted items return "not found".
+
+    Args:
+        item_id: Full UUID or ≥8-char hex prefix of the item.
+        project_id: Project scope for prefix disambiguation and safety.
+
+    Returns:
+        Markdown text with a title header, a metadata block, and
+        untruncated Body / Rationale sections. Empty sections are
+        skipped.
+    """
+    b = await _get_backend()
+    item = await b.get_item(item_id, project_id=project_id)
+    if item is None:
+        return f"Item {item_id!r} not found in project {project_id!r}."
+
+    lines = [f"# {item.title}", ""]
+    meta: list[str] = [
+        f"- id: {item.id}",
+        f"- type: {item.item_type}",
+    ]
+    if item.system_ids:
+        meta.append(f"- systems: {', '.join(item.system_ids)}")
+    if item.tags:
+        meta.append(f"- tags: {', '.join(item.tags)}")
+    if item.work_unit_id:
+        meta.append(f"- work_unit_id: {item.work_unit_id}")
+    if item.supersedes_id:
+        meta.append(f"- supersedes_id: {item.supersedes_id}")
+    meta.append(f"- created_at: {item.created_at.isoformat()}")
+    meta.append(f"- updated_at: {item.updated_at.isoformat()}")
+    lines.extend(meta)
+
+    if item.body:
+        lines.extend(["", "## Body", "", item.body])
+    if item.rationale:
+        lines.extend(["", "## Rationale", "", item.rationale])
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def luplo_check(
     project_id: str,
     rule: str = "",

@@ -11,6 +11,16 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+### Added
+
+- **`luplo_item_show` MCP tool** — returns the full body, rationale, and
+  metadata of a single item by id. Closes a gap where `luplo_item_search`
+  truncated body / rationale to 150 chars and no MCP surface existed to
+  read the untruncated text. Accepts a full UUID or ≥8-char hex prefix;
+  project-scoped. Soft-deleted items return "not found". The underlying
+  `Backend.get_item(id, project_id=...)` already existed; this is
+  formatting-only on the MCP side.
+
 ## [0.7.0] - 2026-04-20
 
 luplo goes dry. The built-in authentication layer is removed; attribution
