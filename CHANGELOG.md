@@ -11,6 +11,72 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-20
+
+luplo goes dry. The built-in authentication layer is removed; attribution
+is preserved. The library stops pretending to be a hosted product and
+goes back to being a library. A deployment that needs authentication
+wraps luplo — it does not extend luplo's schema.
+
+### Breaking
+
+- **Authentication removed from core.** The HTTP server no longer
+  validates identity. Point luplo at a trusted network (localhost, VPN)
+  or put it behind a reverse proxy / auth-proxy that authenticates the
+  caller and forwards an ``X-Actor: <uuid>`` header. As a convenience
+  for solo use, set ``LUPLO_DEFAULT_ACTOR_ID`` and every write is
+  attributed to that actor.
+- **Schema**: migration ``0006_drop_auth`` drops
+  ``actors.password_hash``, ``actors.is_admin``, ``actors.last_login_at``,
+  ``actors.oauth_provider``, ``actors.oauth_subject``, and the
+  ``auth_reset_tokens`` table. ``actors`` keeps
+  ``{id, name, email, role, external_ids, joined_at}`` — it is now a
+  pure attribution registry. All 10 FK columns that reference ``actors``
+  stay intact; no item/history/audit data is lost.
+- **Deleted code**: ``src/luplo/server/auth/`` (JWT, OAuth + PKCE,
+  password hashing, magic-link reset, email sender, domain filter, admin
+  seed — 641 LOC across 10 files), ``src/luplo/server/routes/auth.py``
+  (``/auth/*`` endpoints).
+- **Deleted CLI commands**: ``lp login``, ``lp logout``, ``lp whoami``,
+  ``lp token refresh``, ``lp admin set-password``,
+  ``lp server init-secrets``, ``lp server config-check``.
+- **Deleted settings**: ``LUPLO_JWT_SECRET``, ``LUPLO_JWT_ALG``,
+  ``LUPLO_JWT_TTL_MINUTES``, ``LUPLO_ADMIN_EMAIL``,
+  ``LUPLO_ADMIN_PASSWORD_INITIAL``, ``LUPLO_GITHUB_CLIENT_ID/SECRET``,
+  ``LUPLO_GOOGLE_CLIENT_ID/SECRET``, ``LUPLO_SESSION_SECRET``,
+  ``LUPLO_ALLOWED_EMAIL_DOMAINS``, ``LUPLO_AUTO_CREATE_USERS``,
+  ``LUPLO_AUTH_DISABLED``. Replaced by a single optional
+  ``LUPLO_DEFAULT_ACTOR_ID``.
+- **Dependencies removed from ``luplo[server]``**: ``authlib``,
+  ``pyjwt``, ``argon2-cffi``, ``jinja2``, ``itsdangerous``. The
+  ``luplo[server]`` extras now only pull in ``fastapi``, ``uvicorn``,
+  and ``pydantic-settings``. ``keyring`` is removed from core
+  dependencies (it only served the deleted token storage).
+
+### Added
+
+- **``GET /ready``** — readiness probe that round-trips a ``SELECT 1``
+  against the connection pool. Use this for Kubernetes readiness
+  (distinct from ``/health`` which only reports that the process is up).
+- **``X-Actor`` request header** — write handlers read the attribution
+  actor from this header. Falls back to ``settings.default_actor_id``
+  if set; 400 otherwise. Reads do not require it.
+
+### Migration guide
+
+1. Run ``alembic upgrade head`` to apply ``0006_drop_auth``. Nothing
+   else changes on your data.
+2. If you were running the server with ``LUPLO_AUTH_DISABLED=1``, drop
+   that env var; the new server has no auth to disable.
+3. If you were running with real auth (JWT + cookies + OAuth), stand
+   up a reverse proxy that authenticates users and sets
+   ``X-Actor: <uuid>`` downstream. Or — recommended — wrap luplo as a
+   library (``from luplo.core.backend.local import LocalBackend``) and
+   let your own service own identity.
+4. CLI users on the local backend: nothing to change. ``lp init`` still
+   writes ``.luplo`` with ``actor.id``; all ``lp`` commands read from
+   it unchanged.
+
 ## [0.6.2] - 2026-04-18
 
 Hotfix on top of 0.6.1 — `lp login` / `lp whoami` / `lp logout`

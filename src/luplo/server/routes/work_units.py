@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from luplo.server.auth.deps import CurrentActor, get_current_actor
+from luplo.server.deps import require_actor_id
 
 router = APIRouter()
 
@@ -43,7 +43,7 @@ def _serialize(wu: Any) -> dict[str, Any]:
 async def open_work_unit(
     body: WorkUnitCreateBody,
     request: Request,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor_id: str = Depends(require_actor_id),
 ) -> dict[str, Any]:
     b = request.app.state.backend
     wu = await b.open_work_unit(
@@ -52,7 +52,7 @@ async def open_work_unit(
         title=body.title,
         description=body.description,
         system_ids=body.system_ids or None,
-        created_by=actor.id,
+        created_by=actor_id,
     )
     return _serialize(wu)
 
@@ -73,10 +73,11 @@ async def close_work_unit(
     wu_id: str,
     request: Request,
     body: WorkUnitCloseBody | None = None,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor_id: str = Depends(require_actor_id),
 ) -> dict[str, Any]:
+    del body  # placeholder for future status selection; currently always "done"
     b = request.app.state.backend
-    result = await b.close_work_unit(wu_id, actor_id=actor.id)
+    result = await b.close_work_unit(wu_id, actor_id=actor_id)
     if not result:
         raise HTTPException(404, "Work unit not found or already closed")
     return _serialize(result)

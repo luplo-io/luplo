@@ -207,22 +207,12 @@ QA checks live in `items` with `item_type='qa_check'`.
 Do not run this in Remote mode — the server handles it via its
 lifespan hook when `LUPLO_WORKER_ENABLED=true`.
 
-## Auth (Remote mode)
+## Authentication
 
-| Command | Effect |
-|---|---|
-| `lp login --server <url>` | Password login (or OAuth placeholder). Stores JWT in OS keyring. |
-| `lp logout <server>` | Forget the JWT for that server. |
-| `lp whoami <server>` | Show the authenticated actor. |
-| `lp token refresh` | Rotate the current JWT. |
-| `lp admin set-password --email <email>` | Server-side admin action (argon2id). |
-
-## Server configuration helpers
-
-| Command | Effect |
-|---|---|
-| `lp server init-secrets` | Print a `.env` snippet with fresh `LUPLO_JWT_SECRET` + `LUPLO_SESSION_SECRET`. |
-| `lp server config-check` | Load env + `luplo-server.toml` and report problems. |
+The CLI talks to a local PostgreSQL (`LocalBackend`) by default — no
+authentication needed. The HTTP server has no built-in auth either;
+see {doc}`../guides/remote-server` for how to put your own auth layer
+in front.
 
 ## Environment variables honoured
 

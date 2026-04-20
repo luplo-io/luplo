@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-# Must set auth disabled before importing app.
-# UUID required after 0002 — must match the seeded actor below.
+# Attribution actor UUID sent via the X-Actor header on every write.
 _TEST_SERVER_ACTOR_UUID = "00000000-0000-0000-0000-0000000000ab"
-os.environ["LUPLO_AUTH_DISABLED"] = "1"
-os.environ["LUPLO_ACTOR_ID"] = _TEST_SERVER_ACTOR_UUID
+_ACTOR_HEADERS = {"X-Actor": _TEST_SERVER_ACTOR_UUID}
 
 
 @pytest.fixture
@@ -29,16 +26,21 @@ def db_url_env(db_url: str, monkeypatch: pytest.MonkeyPatch) -> str:
 
 @pytest.fixture
 async def client(db_url_env: str) -> AsyncClient:  # type: ignore[misc]
-    """Create an async test client with manually initialised backend."""
+    """Create an async test client with manually initialised backend.
+
+    Writes send ``X-Actor`` in ``_ACTOR_HEADERS`` to attribute the request.
+    """
     from luplo.core.backend.local import LocalBackend
     from luplo.core.db import close_pool, create_pool
     from luplo.server.app import app
+    from luplo.server.config import load_settings
 
     pool = await create_pool(db_url_env)
     app.state.backend = LocalBackend(pool)
     app.state.pool = pool
+    app.state.settings = load_settings()
 
-    # Seed the actor that AUTH_DISABLED mode pretends is "current".
+    # Seed the actor stamped on every write via X-Actor.
     async with pool.connection() as conn:
         await conn.execute(
             "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING",
@@ -67,7 +69,11 @@ async def test_health(client: AsyncClient) -> None:
 async def test_project_crud(client: AsyncClient) -> None:
     pid = _uid()
     # Create
-    resp = await client.post("/projects", json={"id": pid, "name": f"test-{pid[:8]}"})
+    resp = await client.post(
+        "/projects",
+        json={"id": pid, "name": f"test-{pid[:8]}"},
+        headers=_ACTOR_HEADERS,
+    )
     assert resp.status_code == 201
     assert resp.json()["id"] == pid
 
@@ -91,9 +97,11 @@ async def test_project_not_found(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_item_crud(client: AsyncClient) -> None:
     pid = _uid()
-    await client.post("/projects", json={"id": pid, "name": f"proj-{pid[:8]}"})
-
-    # Actor is seeded by the `client` fixture (UUID-keyed).
+    await client.post(
+        "/projects",
+        json={"id": pid, "name": f"proj-{pid[:8]}"},
+        headers=_ACTOR_HEADERS,
+    )
 
     # Create item
     resp = await client.post(
@@ -103,6 +111,7 @@ async def test_item_crud(client: AsyncClient) -> None:
             "title": "Test decision",
             "item_type": "decision",
         },
+        headers=_ACTOR_HEADERS,
     )
     assert resp.status_code == 201
     item_id = resp.json()["id"]
@@ -118,7 +127,7 @@ async def test_item_crud(client: AsyncClient) -> None:
     assert len(resp.json()) >= 1
 
     # Delete (soft)
-    resp = await client.delete(f"/items/{item_id}")
+    resp = await client.delete(f"/items/{item_id}", headers=_ACTOR_HEADERS)
     assert resp.status_code == 204
 
     # Get after delete
@@ -130,9 +139,11 @@ async def test_item_crud(client: AsyncClient) -> None:
 async def test_work_unit_lifecycle(client: AsyncClient) -> None:
     pid = _uid()
     wid = _uid()
-    await client.post("/projects", json={"id": pid, "name": f"proj-{pid[:8]}"})
-
-    # Actor is seeded by the `client` fixture (UUID-keyed).
+    await client.post(
+        "/projects",
+        json={"id": pid, "name": f"proj-{pid[:8]}"},
+        headers=_ACTOR_HEADERS,
+    )
 
     # Open
     resp = await client.post(
@@ -142,6 +153,7 @@ async def test_work_unit_lifecycle(client: AsyncClient) -> None:
             "project_id": pid,
             "title": "Sprint 1",
         },
+        headers=_ACTOR_HEADERS,
     )
     assert resp.status_code == 201
     assert resp.json()["status"] == "in_progress"
@@ -151,7 +163,7 @@ async def test_work_unit_lifecycle(client: AsyncClient) -> None:
     assert len(resp.json()) >= 1
 
     # Close
-    resp = await client.post(f"/work-units/{wid}/close")
+    resp = await client.post(f"/work-units/{wid}/close", headers=_ACTOR_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["status"] == "done"
 
@@ -159,9 +171,11 @@ async def test_work_unit_lifecycle(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_search(client: AsyncClient) -> None:
     pid = _uid()
-    await client.post("/projects", json={"id": pid, "name": f"proj-{pid[:8]}"})
-
-    # Actor is seeded by the `client` fixture (UUID-keyed).
+    await client.post(
+        "/projects",
+        json={"id": pid, "name": f"proj-{pid[:8]}"},
+        headers=_ACTOR_HEADERS,
+    )
 
     await client.post(
         "/items",
@@ -171,6 +185,7 @@ async def test_search(client: AsyncClient) -> None:
             "body": "NPC shops use goldpool percentage",
             "item_type": "decision",
         },
+        headers=_ACTOR_HEADERS,
     )
 
     resp = await client.get("/search", params={"q": "vendor", "project_id": pid})
@@ -178,3 +193,17 @@ async def test_search(client: AsyncClient) -> None:
     results = resp.json()
     assert len(results) >= 1
     assert "vendor" in results[0]["title"].lower()
+
+
+@pytest.mark.asyncio
+async def test_write_without_actor_header_rejected(client: AsyncClient) -> None:
+    pid = _uid()
+    resp = await client.post("/projects", json={"id": pid, "name": f"noactor-{pid[:8]}"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_ready(client: AsyncClient) -> None:
+    resp = await client.get("/ready")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ready"

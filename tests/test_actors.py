@@ -1,8 +1,10 @@
 """Integration tests for core/actors.py.
 
-After 0002_auth_redesign:
+After 0006_drop_auth:
   - actors.id is UUID (string form in Python).
   - actors.email is NOT NULL.
+  - No authentication fields (password_hash, is_admin, last_login_at,
+    oauth_provider, oauth_subject). actors are attribution labels only.
 """
 
 from __future__ import annotations
@@ -16,9 +18,6 @@ from luplo.core.actors import (
     create_actor,
     get_actor,
     get_actor_by_email,
-    set_admin,
-    set_password,
-    touch_login,
 )
 
 
@@ -41,8 +40,6 @@ async def test_create_actor(conn: object) -> None:
     assert a.role == "maintainer"
     assert a.external_ids == {"slack": "U123", "github": "hanyul99"}
     assert a.joined_at is not None
-    assert a.is_admin is False
-    assert a.password_hash is None
 
 
 @pytest.mark.asyncio
@@ -123,42 +120,3 @@ async def test_get_actor_by_email_not_found(conn: object) -> None:
         )
         is None
     )
-
-
-@pytest.mark.asyncio
-async def test_set_password(conn: object) -> None:
-    a = await create_actor(
-        conn,
-        name="Pw",
-        email="pw@test.com",  # type: ignore[arg-type]
-    )
-    await set_password(conn, a.id, "hashedvalue")  # type: ignore[arg-type]
-    refetched = await get_actor(conn, a.id)  # type: ignore[arg-type]
-    assert refetched is not None
-    assert refetched.password_hash == "hashedvalue"
-
-
-@pytest.mark.asyncio
-async def test_set_admin(conn: object) -> None:
-    a = await create_actor(
-        conn,
-        name="Adm",
-        email="adm@test.com",  # type: ignore[arg-type]
-    )
-    await set_admin(conn, a.id, True)  # type: ignore[arg-type]
-    refetched = await get_actor(conn, a.id)  # type: ignore[arg-type]
-    assert refetched is not None
-    assert refetched.is_admin is True
-
-
-@pytest.mark.asyncio
-async def test_touch_login(conn: object) -> None:
-    a = await create_actor(
-        conn,
-        name="Lg",
-        email="lg@test.com",  # type: ignore[arg-type]
-    )
-    await touch_login(conn, a.id)  # type: ignore[arg-type]
-    refetched = await get_actor(conn, a.id)  # type: ignore[arg-type]
-    assert refetched is not None
-    assert refetched.last_login_at is not None

@@ -67,69 +67,28 @@ reads configuration via [pydantic-settings]. Priority:
 3. `luplo-server.toml` in the working directory
 4. Defaults
 
-**Secrets are env-only.** These fields refuse to load from TOML or
-`.env` if you prefer to keep `.env` out of the picture:
-
-- `LUPLO_JWT_SECRET`
-- `LUPLO_ADMIN_PASSWORD_INITIAL`
-- `LUPLO_GITHUB_CLIENT_SECRET`
-- `LUPLO_GOOGLE_CLIENT_SECRET`
+The server does not authenticate callers — it trusts the network layer
+in front of it. See {doc}`../guides/remote-server` for the shape.
 
 ### All server settings
 
 | Setting | Env variable | TOML key | Default |
 |---|---|---|---|
 | PostgreSQL URL | `LUPLO_DB_URL` | `db_url` | `postgresql://localhost/luplo` |
-| JWT secret (HS256) | **`LUPLO_JWT_SECRET`** | — | (required) |
-| JWT algorithm | `LUPLO_JWT_ALG` | `jwt_alg` | `HS256` |
-| JWT TTL (minutes) | `LUPLO_JWT_TTL_MINUTES` | `jwt_ttl_minutes` | `60` |
-| Seed admin email | `LUPLO_ADMIN_EMAIL` | `admin_email` | `""` |
-| Seed admin password | **`LUPLO_ADMIN_PASSWORD_INITIAL`** | — | `""` |
-| GitHub OAuth client id | `LUPLO_GITHUB_CLIENT_ID` | `github_client_id` / `[github] client_id` | `""` |
-| GitHub OAuth secret | **`LUPLO_GITHUB_CLIENT_SECRET`** | — | `""` |
-| Google OAuth client id | `LUPLO_GOOGLE_CLIENT_ID` | `google_client_id` / `[google] client_id` | `""` |
-| Google OAuth secret | **`LUPLO_GOOGLE_CLIENT_SECRET`** | — | `""` |
-| Allowed email domains | `LUPLO_ALLOWED_EMAIL_DOMAINS` | `allowed_email_domains` | `[]` (all) |
-| Auto-create users | `LUPLO_AUTO_CREATE_USERS` | `auto_create_users` | `true` |
+| Default attribution actor | `LUPLO_DEFAULT_ACTOR_ID` | `default_actor_id` | `""` (no fallback — every write must carry `X-Actor`) |
 | Start worker in lifespan | `LUPLO_WORKER_ENABLED` | `worker_enabled` | `false` |
-| Public base URL | `LUPLO_BASE_URL` | `base_url` | `http://localhost:8000` |
-| OAuth session secret | **`LUPLO_SESSION_SECRET`** | — | `""` |
+| Public base URL | `LUPLO_BASE_URL` | `base_url` | `http://127.0.0.1:8000` |
 
-Bolded env variables are secrets.
+### Attribution (`X-Actor` header)
 
-### TOML grouping
+Every write handler resolves the actor id in this order:
 
-Both flat and grouped forms are accepted:
+1. `X-Actor: <uuid>` on the request.
+2. `LUPLO_DEFAULT_ACTOR_ID` if set.
+3. HTTP 400 otherwise.
 
-```toml
-# Flat
-github_client_id = "Iv23li..."
-
-# Grouped
-[github]
-client_id = "Iv23li..."
-```
-
-The loader flattens `[github] client_id` into `github_client_id` before
-handing the dict to pydantic-settings.
-
-### Fail-fast check
-
-```bash
-uv run lp server config-check
-```
-
-Validates that `LUPLO_JWT_SECRET` is set, `jwt_ttl_minutes > 0`, and
-the admin seed fields are consistent. Exits non-zero with a readable
-error list on misconfiguration.
-
-## Keyring
-
-`lp login` stores the JWT in the OS keyring via the
-[keyring](https://pypi.org/project/keyring/) library — Keychain on
-macOS, Credential Manager on Windows, Secret Service on Linux. There is
-no luplo-specific file on disk holding tokens; revoke access by
-logging out or removing the entry from the OS keyring.
+Reads do not require it. The actor referenced by `X-Actor` must exist
+in the `actors` table; provision it with `lp init` or directly in SQL.
 
 ## Related
 

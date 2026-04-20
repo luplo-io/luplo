@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from luplo.server.auth.deps import CurrentActor, get_current_actor
+from luplo.server.deps import require_actor_id
 
 router = APIRouter()
 
@@ -38,8 +38,9 @@ def _serialize(p: Any) -> dict[str, Any]:
 async def create_project(
     body: ProjectCreate,
     request: Request,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor_id: str = Depends(require_actor_id),
 ) -> dict[str, Any]:
+    del actor_id  # attribution not recorded on projects; header required for uniformity
     b = request.app.state.backend
     p = await b.create_project(id=body.id, name=body.name, description=body.description)
     return _serialize(p)

@@ -222,12 +222,12 @@ def anyio_backend() -> str:
 async def http_client(db_url: str, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Seeded FastAPI test client.
 
-    Uses the same actor UUID as ``tests/test_server.py`` so env pollution
-    across files is not a concern — both files end up seeding the same row.
+    Writes are attributed via the ``X-Actor`` default set by
+    ``LUPLO_DEFAULT_ACTOR_ID`` — the fixture returns that UUID so
+    individual tests can also pass the header explicitly where useful.
     """
     test_actor = "00000000-0000-0000-0000-0000000000ab"
-    monkeypatch.setenv("LUPLO_AUTH_DISABLED", "1")
-    monkeypatch.setenv("LUPLO_ACTOR_ID", test_actor)
+    monkeypatch.setenv("LUPLO_DEFAULT_ACTOR_ID", test_actor)
     monkeypatch.setenv("LUPLO_DB_URL", db_url)
 
     from httpx import ASGITransport, AsyncClient
@@ -235,10 +235,12 @@ async def http_client(db_url: str, monkeypatch: pytest.MonkeyPatch):  # type: ig
     from luplo.core.backend.local import LocalBackend
     from luplo.core.db import close_pool, create_pool
     from luplo.server.app import app
+    from luplo.server.config import load_settings
 
     pool = await create_pool(db_url)
     app.state.backend = LocalBackend(pool)
     app.state.pool = pool
+    app.state.settings = load_settings()
 
     async with pool.connection() as conn:
         await conn.execute(

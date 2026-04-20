@@ -4,9 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-luplo is a CLI + MCP server for long-term memory of engineering decisions. Tracks items (decisions, knowledge, policies, documents), work units, system dependencies, and glossary terms. PostgreSQL with full-text search (tsquery + glossary expansion) and optional pgvector ranking. AGPL-3.0 + CLA.
-
-Primary use case: Hearthward (solo MMORPG) development infrastructure. Secondary: enterprise Notion/Confluence semantic change layer. Tertiary: compliance audit (v1.0+).
+luplo is a CLI + MCP server for long-term memory of engineering decisions. It tracks items (decisions, knowledge, policies, documents), work units, system dependencies, and glossary terms in PostgreSQL, with full-text search (tsquery + glossary expansion) and optional pgvector ranking.
 
 ## Architecture
 
@@ -36,15 +34,17 @@ src/luplo/
 ├── mcp.py
 └── server/
     ├── app.py
-    ├── auth/
+    ├── config.py
+    ├── deps.py
     └── routes/
 ```
 
-## Build & development
+## Build, test & development
 
 ```bash
-uv sync                                     # install deps
-uv sync --extra server                      # with FastAPI/auth
+# Install
+uv sync                                     # core deps
+uv sync --extra server                      # with FastAPI
 uv sync --extra vector-local                # with sentence-transformers
 
 # Database
@@ -54,6 +54,15 @@ alembic downgrade -1                        # rollback last migration
 
 # CLI (dev mode)
 uv run lp --help
+
+# Tests
+uv run pytest
+uv run pytest tests/path/to/test.py::test_name   # single test
+
+# Lint, format, types
+uv run ruff check .
+uv run ruff format .
+uv run pyright
 ```
 
 ## Data model (12 tables)
@@ -66,36 +75,33 @@ Migrations live in `db/migrations/`. Config in `alembic.ini`. Env override: `LUP
 
 ## Key design decisions
 
-- **Two modes**: Local (direct PG, single-user) and Remote (FastAPI + OAuth, team). `.luplo` config file.
+- **Two modes**: Local (direct PG, single-user) and Remote (FastAPI HTTP adapter, no built-in auth — wrap it). `.luplo` config file.
 - **Embedding default is null backend** — no Python ML deps by default. `vector-local` extras for sentence-transformers.
 - **Vector is ranking only, never primary search.** tsquery does retrieval, vector reranks. Honesty > coverage.
 - **Glossary is strict-first** — deterministic normalization → strict LLM matching → human curation queue. No aggressive clustering.
 - **Soft delete on items** — `deleted_at` field, rows never physically removed. Edits create new rows via `supersedes_id`.
 - **work_units** replace sessions — user-facing intent grouping, spans multiple Claude sessions. A→B handoff via `status='in_progress'`.
 - **Worker**: `lp worker start` (Local) or server lifespan (Remote). PG LISTEN/NOTIFY for sync_jobs + glossary term candidates.
-- **systems** name kept (features considered and rejected — mental rewiring cost + cj data compat).
 
-## Code standards (OSS grade)
+## Code standards
 
 - All code, comments, docstrings, and commit messages in **English**
 - Public functions and classes must have **Google-style docstrings**
 - **ruff** for linting and formatting — zero warnings
 - **pyright strict** for type checking — no `# type: ignore`
 - **pytest** for tests — core paths must have coverage
-- Commit messages follow **Conventional Commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`)
 - No inline `TODO` without a linked issue
 - Imports sorted by ruff (isort-compatible)
 - Max line length 99
+- Python `>=3.12`
 
-## Source of truth
+## Commit & PR conventions
 
-Design specs live in Notion (3 pages). Code follows them; if code and Notion diverge, ask before assuming code is wrong.
+- Follow **Conventional Commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`)
+- **Do not add `Co-Authored-By: Claude` trailers** — commit as the developer's git identity only
+- Do not mark PRs ready for review automatically; leave as draft unless the user asks otherwise
+- Do not run destructive git operations (`push --force`, `reset --hard`, branch deletion) without explicit user instruction
 
-## Project setup
+## Design docs
 
-- **Python**: >=3.12 (dev on 3.14)
-- **Build**: Hatchling (src layout)
-- **Package**: `src/luplo/`
-- **PyPI**: luplo 0.0.1
-- **GitHub**: luplo-io/luplo
-- **License**: AGPL-3.0-or-later + CLA
+Concept-level design lives in `docs/concepts/` and `docs/guides/`. If code and docs diverge, ask before assuming code is correct.

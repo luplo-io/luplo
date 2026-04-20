@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from luplo.core.errors import NotFoundError, ValidationError
 from luplo.core.impact import MAX_IMPACT_DEPTH, ImpactResult
-from luplo.server.auth.deps import CurrentActor, get_current_actor
+from luplo.server.deps import require_actor_id
 
 router = APIRouter()
 
@@ -54,7 +54,7 @@ def _serialize(item: Any) -> dict[str, Any]:
 async def create_item(
     body: ItemCreateBody,
     request: Request,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor_id: str = Depends(require_actor_id),
 ) -> dict[str, Any]:
     from luplo.core.models import ItemCreate
 
@@ -62,7 +62,7 @@ async def create_item(
     item = await b.create_item(
         ItemCreate(
             project_id=body.project_id,
-            actor_id=actor.id,
+            actor_id=actor_id,
             item_type=body.item_type,
             title=body.title,
             body=body.body,
@@ -115,10 +115,10 @@ async def list_items(
 async def delete_item(
     item_id: str,
     request: Request,
-    actor: CurrentActor = Depends(get_current_actor),
+    actor_id: str = Depends(require_actor_id),
 ) -> None:
     b = request.app.state.backend
-    await b.delete_item(item_id, actor_id=actor.id)
+    await b.delete_item(item_id, actor_id=actor_id)
 
 
 def _serialize_impact(result: ImpactResult) -> dict[str, Any]:
@@ -149,12 +149,6 @@ async def get_item_impact(
     depth: int = Query(MAX_IMPACT_DEPTH, ge=1, le=MAX_IMPACT_DEPTH),
 ) -> dict[str, Any]:
     """Return the blast radius of *item_id* up to *depth* hops.
-
-    Follows the same auth policy as ``GET /items/{item_id}`` and
-    ``GET /items`` — reads are unauthenticated when the Remote server is
-    running with ``LUPLO_AUTH_DISABLED``, and gated by the configured
-    auth middleware otherwise. Writes (POST/DELETE) always require
-    ``get_current_actor``.
 
     ``depth`` is validated 1..5 by FastAPI; values outside that range
     return 422 before the handler runs.

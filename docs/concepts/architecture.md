@@ -85,7 +85,7 @@ core/
 ├── links.py           typed edges between items / systems / work units
 ├── systems.py         system graph (dependencies)
 ├── projects.py        project row + seed
-├── actors.py          users (email-first, argon2 passwords, OAuth)
+├── actors.py          attribution registry (id/name/email — no auth)
 ├── glossary.py        strict-first glossary pipeline
 ├── search/            pipeline.py, tsquery.py
 ├── embedding/         protocol / null / local (sentence-transformers)

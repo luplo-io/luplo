@@ -28,17 +28,19 @@ class Project:
 
 @dataclass(slots=True)
 class Actor:
+    """Attribution label — "who wrote this," not an authenticated principal.
+
+    luplo core treats actors like git commit authors: a free-form registry
+    of name/email pairs referenced as FK on items, history, and audit.
+    Authentication (password, OAuth, session) lives outside core.
+    """
+
     id: str  # UUID string representation
     name: str
     email: str
     role: str | None
-    oauth_provider: str | None
-    oauth_subject: str | None
     external_ids: dict[str, str]
     joined_at: datetime
-    password_hash: str | None = None
-    is_admin: bool = False
-    last_login_at: datetime | None = None
 
 
 @dataclass(slots=True)

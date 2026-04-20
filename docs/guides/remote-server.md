@@ -1,155 +1,150 @@
 # Running the Remote server
 
-**Remote mode** is luplo's team setup. A FastAPI server sits in front of
-PostgreSQL, issues JWTs to authenticated users, and runs the background
-worker alongside the HTTP surface. CLIs and MCP clients on team
-members' laptops talk to the server over HTTP instead of hitting the
-database directly.
+**Remote mode** is luplo's shared setup. A FastAPI server sits in front
+of PostgreSQL so CLIs and MCP clients on other machines can talk to
+luplo over HTTP instead of opening a database connection directly.
 
-This guide is the end-to-end bring-up.
+luplo's server **does not authenticate callers.** It is a library with
+an HTTP adapter, not a hosted product. Deploy it on a trusted network
+(localhost, a VPN, or behind a reverse proxy / auth-proxy that does
+its own authentication) and use the ``X-Actor`` header to tell luplo
+whose UUID to stamp on write operations. If you need real user auth,
+OAuth, or multi-tenancy, wrap luplo — do not extend it.
 
 ## When to choose Remote
 
-- Two or more developers share a decision log.
-- Your Postgres should not be reachable from every contributor's
-  laptop.
-- You want password or OAuth auth, not per-user database credentials.
+- You want the DB to sit behind a bastion and only the luplo server to
+  reach it.
+- You are building a SaaS or team product that needs its own identity
+  layer, and you want luplo to be the storage/logic piece.
+- Multiple dev machines should share the same luplo store without each
+  one owning database credentials.
 
 Solo users with a local Postgres should stick with {doc}`local-worker`.
 
 ## Prerequisites
 
 - Everything in the {doc}`../quickstart` prereqs.
-- `uv sync --extra server` — adds FastAPI, authlib, pyjwt, argon2, etc.
-- A Postgres instance the server can reach (loopback in dev, managed
-  service in prod).
+- `uv sync --extra server` — adds FastAPI, Uvicorn, and pydantic-settings.
+- A Postgres instance the server can reach.
 
-## 1. Generate server secrets
+## 1. Configure
 
-```bash
-uv run lp server init-secrets
-```
-
-Prints a `.env` snippet with a fresh `LUPLO_JWT_SECRET` (HS256 signing
-key) and `LUPLO_SESSION_SECRET` (OAuth callback state). Save it
-somewhere safe — secrets are env-only by design (see below).
-
-## 2. Configure
-
-Server configuration loads from **environment variables** (highest
-priority) and an optional **`luplo-server.toml`** file in the working
-directory. Sensitive fields are **env-only**:
+Server configuration loads from environment variables (highest priority)
+and an optional `luplo-server.toml` in the working directory.
 
 | Field | Source | Notes |
 |---|---|---|
 | `LUPLO_DB_URL` | env / TOML | PostgreSQL connection string. |
-| `LUPLO_JWT_SECRET` | **env only** | HS256 signing key. |
-| `LUPLO_JWT_TTL_MINUTES` | env / TOML | Token lifetime, default 60. |
-| `LUPLO_ADMIN_EMAIL` | env / TOML | Optional seed admin address. |
-| `LUPLO_ADMIN_PASSWORD_INITIAL` | **env only** | Seed password for the admin. Skipped if omitted. |
-| `LUPLO_GITHUB_CLIENT_ID` / `..._SECRET` | env for secret | OAuth auto-enables when both present. |
-| `LUPLO_GOOGLE_CLIENT_ID` / `..._SECRET` | env for secret | OAuth auto-enables when both present. |
-| `LUPLO_ALLOWED_EMAIL_DOMAINS` | env / TOML | Restrict auto-provision; empty = allow all. |
-| `LUPLO_AUTO_CREATE_USERS` | env / TOML | Default `true`. |
+| `LUPLO_DEFAULT_ACTOR_ID` | env / TOML | Fallback attribution UUID when a request has no `X-Actor` header. Optional; leave empty to force every write to carry an explicit header. |
 | `LUPLO_WORKER_ENABLED` | env / TOML | Start the worker in the lifespan hook. Default `false`. |
-| `LUPLO_BASE_URL` | env / TOML | Used for OAuth callback URLs. |
-| `LUPLO_SESSION_SECRET` | **env only** | OAuth session signing. |
+| `LUPLO_BASE_URL` | env / TOML | Documentation/presentation URL; not used for auth callbacks (there are none). |
 
 Example `luplo-server.toml`:
 
 ```toml
 db_url = "postgresql://luplo@db/luplo"
-jwt_ttl_minutes = 120
 base_url = "https://luplo.example.com"
-
 worker_enabled = true
-auto_create_users = false
-allowed_email_domains = ["example.com"]
-
-admin_email = "admin@example.com"
-
-[github]
-client_id = "Iv23liXXXX"
-
-[google]
-client_id = "123-xyz.apps.googleusercontent.com"
+default_actor_id = "00000000-0000-0000-0000-000000000000"
 ```
 
-And the `.env` (secrets only):
-
-```bash
-LUPLO_JWT_SECRET=<from init-secrets>
-LUPLO_SESSION_SECRET=<from init-secrets>
-LUPLO_ADMIN_PASSWORD_INITIAL=change-me-on-first-login
-LUPLO_GITHUB_CLIENT_SECRET=...
-LUPLO_GOOGLE_CLIENT_SECRET=...
-```
-
-Check configuration before starting the server:
-
-```bash
-uv run lp server config-check
-```
-
-This loads the merged env + TOML and prints any missing or
-inconsistent values without booting FastAPI.
-
-## 3. Run migrations
-
-Point Alembic at the same DB the server will use:
+## 2. Run migrations
 
 ```bash
 export LUPLO_DB_URL="postgresql://luplo@db/luplo"
 uv run alembic upgrade head
 ```
 
-## 4. Start the server
+## 3. Start the server
 
 ```bash
-uv run uvicorn luplo.server.app:app --host 0.0.0.0 --port 8000
+uv run uvicorn luplo.server.app:app --host 127.0.0.1 --port 8000
 ```
 
-With `LUPLO_WORKER_ENABLED=true` the server's lifespan hook also boots
-the background worker — you do **not** run `lp worker` separately in
-Remote mode.
+Binding to `127.0.0.1` is the intended default — the server has no
+authentication, so it must not be reachable directly from the public
+internet. Put your own auth layer in front of it (see below).
 
-## 5. First admin login
+With `LUPLO_WORKER_ENABLED=true`, the lifespan hook also boots the
+background worker — you do **not** run `lp worker` separately in Remote
+mode.
 
-If you set `LUPLO_ADMIN_EMAIL` + `LUPLO_ADMIN_PASSWORD_INITIAL`, the
-admin is seeded on first boot. Visit `https://<base-url>/auth/login`
-and sign in; you'll be asked to change the password immediately.
+## 4. Probes
 
-To reset an actor's password from the box the server runs on:
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Liveness. Reports only that the process is up. |
+| `GET /ready` | Readiness. Round-trips `SELECT 1` through the pool. Use this as the Kubernetes readiness probe. |
 
-```bash
-uv run lp admin set-password --email user@example.com
+## 5. Attribution (the `X-Actor` header)
+
+Every write handler requires an attribution actor UUID. Reads do not.
+
+```
+POST /items
+X-Actor: 71785d65-57a8-4951-8bc7-97888b5755f6
+Content-Type: application/json
+{ ... }
 ```
 
-## 6. Client-side: `lp login`
+Resolution order:
 
-On a developer's machine, point `.luplo` at the server and log in:
+1. `X-Actor: <uuid>` request header.
+2. `settings.default_actor_id` (`LUPLO_DEFAULT_ACTOR_ID`).
+3. HTTP 400 if neither is present.
 
-```bash
-uv run lp init \
-    --project myapp \
-    --email me@example.com \
-    --server-url https://luplo.example.com
+The actor referenced by `X-Actor` must exist in `actors`. Provision it
+once with the CLI (`lp init`) or via SQL before its first use.
 
-uv run lp login --server https://luplo.example.com
-# prompts for password; stores JWT in OS keyring
+## 6. Putting your own auth in front
+
+Since luplo trusts the request caller, the network layer has to make
+that trust meaningful. Two common shapes:
+
+### Shape A — reverse proxy auth
+
+An auth-proxy (oauth2-proxy, Caddy with `forward_auth`, nginx
+`auth_request`, Pomerium, Tailscale Funnel, etc.) authenticates the
+human in front of luplo. The proxy maps the authenticated user to a
+luplo actor UUID and injects it:
+
+```nginx
+location / {
+    auth_request /_auth;
+    proxy_set_header X-Actor $authenticated_actor_uuid;
+    proxy_pass http://127.0.0.1:8000;
+}
 ```
 
-`lp whoami` verifies the stored token. `lp token refresh` rotates it
-before expiry. `lp logout` removes it from the keyring.
+### Shape B — import luplo as a library
 
-After login, every `lp …` call transparently uses the Remote backend —
-CLI output shape is unchanged, the backend under the hood is now HTTP.
+For SaaS or team products, skip luplo's HTTP layer entirely. Use it as
+a Python library inside your own FastAPI (or any) app:
+
+```python
+from fastapi import FastAPI, Depends
+from luplo.core.backend.local import LocalBackend
+from luplo.core.db import create_pool
+
+app = FastAPI()  # your app, your auth
+
+async def my_backend() -> LocalBackend:
+    return LocalBackend(pool)  # pool scoped per-tenant as you prefer
+
+@app.post("/memories")
+async def create(body, user = Depends(my_auth), b = Depends(my_backend)):
+    return await b.create_item(..., actor_id=user.id)
+```
+
+This is the intended path for multi-tenant deployments. luplo has no
+opinion about organisations, users, or sessions — all of that belongs
+in your wrapper.
 
 ## 7. Wire MCP clients to the Remote server
 
-An MCP client in Remote mode spawns the same luplo MCP process, but
-with `LUPLO_SERVER_URL` set and **no** `LUPLO_DB_URL`. The keyring JWT
-from `lp login` is reused automatically.
+An MCP client in Remote mode spawns the same luplo MCP process but
+with `LUPLO_SERVER_URL` set and **no** `LUPLO_DB_URL`.
 
 ```json
 {
@@ -168,71 +163,14 @@ from `lp login` is reused automatically.
 }
 ```
 
-## OAuth providers
-
-OAuth auto-enables when both `client_id` and `client_secret` are set
-for a provider. Supported: **GitHub**, **Google**. Users authenticated
-via OAuth have `password_hash=NULL` in `actors` and can only log in via
-their provider.
-
-- `auto_create_users=true` (default) — first OAuth login provisions a
-  new `actors` row.
-- `auto_create_users=false` — the actor row must already exist
-  (admin-provisioned) or the login is rejected.
-- `allowed_email_domains` — additional domain allowlist.
-
-## Password reset (magic link)
-
-Remote mode accepts a two-step reset flow for password-authenticated
-actors. OAuth-only actors are not affected (they have no password to
-reset).
-
-```
-POST /auth/reset-request     body: email=<address>
-POST /auth/reset-confirm     body: token=<plaintext>, new_password=<new>
-```
-
-### `/auth/reset-request`
-
-Always returns `200 {"ok": true}`, whether the email is registered
-or not. The response shape is identical in both cases so the endpoint
-cannot be used to enumerate accounts. When the email does exist, the
-server issues a single-use token with a 15-minute TTL, stores only
-the argon2id hash, and emails the plaintext via the configured
-:class:`EmailSender`.
-
-### `/auth/reset-confirm`
-
-Verifies the token, rotates the actor's password hash, and marks the
-token used — all in one transaction. A concurrent replay fails the
-token's `used_at IS NULL` guard. The response is `200 {"ok": true}`
-on success; every failure path (unknown token, expired, reused, weak
-new password) returns a single generic
-`400 "Invalid or expired token"` so failures never leak *why*.
-
-### Email backend
-
-| Env | Effect |
-|---|---|
-| `LUPLO_EMAIL_BACKEND` unset or `logging` | `LoggingEmailSender` writes the email body (including the reset URL) to stderr. Dev default — never use in production. |
-| `LUPLO_EMAIL_BACKEND=smtp` | `SMTPEmailSender.from_env()` reads `LUPLO_SMTP_HOST`, `LUPLO_SMTP_PORT` (default 587), `LUPLO_SMTP_USER` / `LUPLO_SMTP_PASSWORD` (optional, login auth), `LUPLO_SMTP_FROM` (required), `LUPLO_SMTP_STARTTLS` (default `1`). |
-
-Hosted transactional services (SES, Postmark, Resend) plug in by
-implementing the tiny `EmailSender` protocol in
-`src/luplo/server/auth/email.py`.
-
-### Known gap
-
-JWTs issued before a reset remain valid until their normal TTL —
-there is no token denylist in v0.6. Rotate `LUPLO_JWT_SECRET` (and
-accept the server-wide logout) if a password reset needs to revoke
-active sessions immediately.
+If your reverse-proxy requires a token for service-to-service calls,
+wire that into the MCP client's environment alongside
+`LUPLO_SERVER_URL` — luplo's HTTP client forwards whatever Authorization
+header your wrapper expects.
 
 ## Operational notes
 
-- **Rotation.** To rotate `LUPLO_JWT_SECRET`, restart the server with
-  the new value. Existing JWTs become invalid; users re-login.
-- **Backups.** Everything is in Postgres — point-in-time-recovery on
+- **Backups.** Everything is in Postgres — point-in-time recovery on
   the DB is the backup story. There is no state outside it.
 - **Observability.** FastAPI serves its usual access log on stdout;
   the worker logs when it drains jobs. Both are quiet by design.

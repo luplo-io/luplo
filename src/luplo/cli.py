@@ -16,7 +16,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-import httpx
 import typer
 
 from luplo.config import CONFIG_FILENAME, load_config, write_config
@@ -24,9 +23,6 @@ from luplo.core.backend.local import LocalBackend
 from luplo.core.db import close_pool, create_pool
 from luplo.core.impact import ImpactNode, ImpactResult
 from luplo.core.models import Item, ItemCreate
-
-KEYRING_SERVICE = "luplo"
-KEYRING_TOKEN_KEY = "token"
 
 app = typer.Typer(
     name="lp",
@@ -40,9 +36,6 @@ systems_app = typer.Typer(name="systems", help="Manage systems.")
 glossary_app = typer.Typer(name="glossary", help="Manage the glossary.")
 task_app = typer.Typer(name="task", help="Manage tasks (item_type='task').")
 qa_app = typer.Typer(name="qa", help="Manage QA checks (item_type='qa_check').")
-auth_app = typer.Typer(name="token", help="Manage authentication tokens.")
-admin_app = typer.Typer(name="admin", help="Administrative commands (requires admin).")
-server_app = typer.Typer(name="server", help="Server configuration and secrets.")
 
 app.add_typer(items_app)
 app.add_typer(work_app)
@@ -50,64 +43,6 @@ app.add_typer(systems_app)
 app.add_typer(glossary_app)
 app.add_typer(task_app)
 app.add_typer(qa_app)
-app.add_typer(auth_app)
-app.add_typer(admin_app)
-app.add_typer(server_app)
-
-
-# ── Token storage (keyring) ──────────────────────────────────────
-
-
-def _store_token(server_url: str, token: str) -> None:
-    import keyring
-    from keyring.errors import KeyringError
-
-    try:
-        keyring.set_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}", token)
-    except KeyringError as e:
-        typer.echo(
-            f"Error: could not store token in system keyring ({e}). "
-            "Install a keyring backend (e.g. `secret-tool` on Linux) "
-            "or run on a desktop session with a keychain.",
-            err=True,
-        )
-        raise typer.Exit(1) from e
-
-
-def _load_token(server_url: str) -> str | None:
-    """Read the stored token. Returns None when no token is set OR when no
-    keyring backend is available — a missing backend is indistinguishable
-    from "not logged in" from the caller's perspective."""
-    import keyring
-    from keyring.errors import KeyringError
-
-    try:
-        return keyring.get_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}")
-    except KeyringError:
-        return None
-
-
-def _delete_token(server_url: str) -> None:
-    import contextlib
-
-    import keyring
-    from keyring.errors import KeyringError
-
-    with contextlib.suppress(KeyringError):
-        keyring.delete_password(KEYRING_SERVICE, f"{KEYRING_TOKEN_KEY}:{server_url}")
-
-
-def _cfg_server_url(flag: str | None = None) -> str:
-    if flag:
-        return flag
-    cfg = load_config()
-    if cfg.server_url:
-        return cfg.server_url
-    typer.echo(
-        "Error: no server URL. Use --server, LUPLO_SERVER_URL, or set [backend].server_url.",
-        err=True,
-    )
-    raise typer.Exit(1)
 
 
 # ── Config helpers ───────────────────────────────────────────────
@@ -1354,235 +1289,6 @@ def qa_assign(
             _print_qa(q)
 
     _run(_do())
-
-
-# ── Auth (remote) ────────────────────────────────────────────────
-
-
-@app.command("login")
-def login(
-    email: str | None = typer.Option(None, "--email", "-e"),
-    password: str | None = typer.Option(
-        None,
-        "--password",
-        "-P",
-        help="If omitted, you'll be prompted.",
-    ),
-    server: str | None = typer.Option(None, "--server", help="Server URL."),
-    oauth: str | None = typer.Option(
-        None,
-        "--oauth",
-        help="OAuth provider (github|google). Not yet wired — use password login.",
-    ),
-) -> None:
-    """Log in to a remote luplo server and store the JWT in keyring."""
-    server_url = _cfg_server_url(server).rstrip("/")
-
-    if oauth:
-        typer.echo(
-            "OAuth CLI login (loopback + PKCE) is not yet wired in v0.5.1. "
-            f"Browse to {server_url}/auth/login in a browser, or use password login.",
-            err=True,
-        )
-        raise typer.Exit(2)
-
-    cfg = load_config()
-    email_val = email or cfg.actor_email
-    if not email_val:
-        email_val = typer.prompt("Email")
-    password_val = password or typer.prompt("Password", hide_input=True)
-
-    with httpx.Client(timeout=10.0) as client:
-        try:
-            resp = client.post(
-                f"{server_url}/auth/login",
-                data={"email": email_val, "password": password_val},
-            )
-        except httpx.HTTPError as e:
-            typer.echo(f"Connection failed: {e}", err=True)
-            raise typer.Exit(1) from e
-
-    if resp.status_code != 200:
-        typer.echo(f"Login failed ({resp.status_code}): {resp.text}", err=True)
-        raise typer.Exit(1)
-
-    token = resp.json().get("token")
-    if not token:
-        typer.echo(f"Server did not return a token: {resp.text}", err=True)
-        raise typer.Exit(1)
-
-    _store_token(server_url, token)
-    typer.echo(f"Logged in to {server_url} as {email_val}.")
-
-
-@app.command("logout")
-def logout(server: str | None = typer.Option(None, "--server")) -> None:
-    """Forget the stored JWT for *server*."""
-    server_url = _cfg_server_url(server).rstrip("/")
-    _delete_token(server_url)
-    typer.echo(f"Removed credentials for {server_url}.")
-
-
-@app.command("whoami")
-def whoami(server: str | None = typer.Option(None, "--server")) -> None:
-    """Show the authenticated actor for *server*."""
-    server_url = _cfg_server_url(server).rstrip("/")
-    token = _load_token(server_url)
-    if not token:
-        typer.echo("Not logged in. Run `lp login`.", err=True)
-        raise typer.Exit(1)
-    with httpx.Client(timeout=10.0) as client:
-        resp = client.get(
-            f"{server_url}/auth/whoami",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-    if resp.status_code != 200:
-        typer.echo(f"whoami failed ({resp.status_code}): {resp.text}", err=True)
-        raise typer.Exit(1)
-    data = resp.json()
-    admin = " (admin)" if data.get("is_admin") else ""
-    typer.echo(f"{data['email']} [{data['id'][:8]}…]{admin}")
-
-
-@auth_app.command("refresh")
-def token_refresh(server: str | None = typer.Option(None, "--server")) -> None:
-    """Request a fresh JWT using the current token."""
-    server_url = _cfg_server_url(server).rstrip("/")
-    token = _load_token(server_url)
-    if not token:
-        typer.echo("Not logged in.", err=True)
-        raise typer.Exit(1)
-    with httpx.Client(timeout=10.0) as client:
-        resp = client.post(
-            f"{server_url}/auth/token/refresh",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-    if resp.status_code != 200:
-        typer.echo(f"Refresh failed ({resp.status_code}): {resp.text}", err=True)
-        raise typer.Exit(1)
-    new_token = resp.json().get("token")
-    if not new_token:
-        typer.echo("Server did not return a token.", err=True)
-        raise typer.Exit(1)
-    _store_token(server_url, new_token)
-    typer.echo("Token refreshed.")
-
-
-# ── Admin (local DB) ─────────────────────────────────────────────
-
-
-@admin_app.command("set-password")
-def admin_set_password(
-    email: str = typer.Argument(..., help="Target actor email."),
-    password: str | None = typer.Option(
-        None,
-        "--password",
-        "-P",
-        help="If omitted, you'll be prompted.",
-    ),
-) -> None:
-    """Set or reset a local actor's password (argon2id)."""
-    from luplo.core.actors import get_actor_by_email, set_password
-    from luplo.server.auth.password import WeakPasswordError, hash_password
-
-    pw = password or typer.prompt("New password", hide_input=True, confirmation_prompt=True)
-    try:
-        hashed = hash_password(pw)
-    except WeakPasswordError as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from e
-
-    async def _do() -> None:
-        db_url = _cfg_db_url()
-        pool = await create_pool(db_url)
-        try:
-            async with pool.connection() as conn:
-                actor = await get_actor_by_email(conn, email)
-                if not actor:
-                    typer.echo(f"Actor with email '{email}' not found.", err=True)
-                    raise typer.Exit(1)
-                await set_password(conn, actor.id, hashed)
-        finally:
-            await close_pool(pool)
-
-    _run(_do())
-    typer.echo(f"Password updated for {email}.")
-
-
-# ── Server config ────────────────────────────────────────────────
-
-
-@server_app.command("init-secrets")
-def server_init_secrets(
-    output: Path = typer.Option(
-        Path("luplo-server.toml"),
-        "--output",
-        "-o",
-        help="Where to write the generated server config.",
-    ),
-    force: bool = typer.Option(False, "--force", "-f"),
-) -> None:
-    """Generate a fresh JWT secret + session secret and print an .env snippet.
-
-    Does not overwrite existing secrets files unless --force.
-    """
-    import secrets
-
-    jwt_secret = secrets.token_hex(32)
-    session_secret = secrets.token_hex(32)
-
-    if output.exists() and not force:
-        typer.echo(f"{output} already exists (pass --force to overwrite).", err=True)
-        raise typer.Exit(1)
-
-    output.write_text(
-        "# luplo server config. Secrets belong in env vars, not this file.\n"
-        "# Set: LUPLO_JWT_SECRET, LUPLO_SESSION_SECRET, LUPLO_ADMIN_PASSWORD_INITIAL\n"
-        "\n"
-        'db_url = "postgresql://localhost/luplo"\n'
-        'base_url = "http://localhost:8000"\n'
-        "jwt_ttl_minutes = 60\n"
-        "allowed_email_domains = []\n"
-        "auto_create_users = true\n"
-    )
-    typer.echo(f"Wrote {output}")
-    typer.echo("")
-    typer.echo("Add these to your .env (or export in the server shell):")
-    typer.echo(f"  LUPLO_JWT_SECRET={jwt_secret}")
-    typer.echo(f"  LUPLO_SESSION_SECRET={session_secret}")
-    typer.echo("  LUPLO_ADMIN_EMAIL=admin@example.com")
-    typer.echo("  LUPLO_ADMIN_PASSWORD_INITIAL=<pick a strong >=12 char password>")
-
-
-@server_app.command("config-check")
-def server_config_check() -> None:
-    """Load server settings from env + luplo-server.toml and report problems."""
-    try:
-        from luplo.server.config import fail_fast_check, load_settings
-    except ImportError as e:
-        typer.echo(f"Server dependencies not installed: {e}", err=True)
-        typer.echo("Install with: uv sync --extra server", err=True)
-        raise typer.Exit(1) from e
-
-    settings = load_settings()
-    problems = fail_fast_check(settings)
-    typer.echo(f"db_url: {settings.db_url}")
-    typer.echo(f"jwt_alg: {settings.jwt_alg}")
-    typer.echo(f"jwt_ttl_minutes: {settings.jwt_ttl_minutes}")
-    typer.echo(f"jwt_secret: {'<set>' if settings.jwt_secret else '<MISSING>'}")
-    typer.echo(f"admin_email: {settings.admin_email or '<unset>'}")
-    typer.echo(f"github_enabled: {settings.github_enabled}")
-    typer.echo(f"google_enabled: {settings.google_enabled}")
-    typer.echo(f"allowed_email_domains: {settings.allowed_email_domains or '(unrestricted)'}")
-    typer.echo(f"auto_create_users: {settings.auto_create_users}")
-    if problems:
-        typer.echo("")
-        typer.echo("Problems:", err=True)
-        for p in problems:
-            typer.echo(f"  - {p}", err=True)
-        raise typer.Exit(1)
-    typer.echo("")
-    typer.echo("Config OK.")
 
 
 if __name__ == "__main__":

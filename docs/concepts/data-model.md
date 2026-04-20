@@ -14,7 +14,7 @@ database a language-agnostic contract for extension.
 | Table | Purpose |
 |---|---|
 | `projects` | Top-level scope. Most queries are `WHERE project_id = ?`. |
-| `actors` | Users. Email-first primary identity (v0.5.1+), UUID id, argon2 password hash nullable (OAuth-only users leave it NULL). |
+| `actors` | Attribution registry (v0.7.0+). UUID id, NOT-NULL email as a label (git-committer style). No passwords, no auth — identity belongs to whatever wraps luplo. |
 | `systems` | Named components inside a project with optional dependency edges. "Auth", "Payments", "Notifications". Items and work units tag into these. |
 | `items` | The substrate. One row per decision / knowledge / policy / document / task / qa_check / research (and any user-registered type). See below for columns. |
 | `links` | Typed edges — item↔item, item↔system, item↔work_unit. |

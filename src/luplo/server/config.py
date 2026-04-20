@@ -1,12 +1,16 @@
 """Server-side settings (pydantic-settings).
 
 Loaded from environment variables (prefix ``LUPLO_``) and optionally
-``luplo-server.toml`` in the working directory. Sensitive values
-(``LUPLO_JWT_SECRET``, ``LUPLO_ADMIN_PASSWORD_INITIAL``) are env-only —
-never read from TOML.
+``luplo-server.toml`` in the working directory.
 
 Distinct from the client ``LuploConfig`` in ``luplo.config``; the server
 never imports that module.
+
+luplo's HTTP server does not authenticate callers. It is intended to
+run on a trusted network (localhost, VPN, or behind a reverse proxy
+that handles authentication). ``X-Actor`` on write requests, or
+``default_actor_id`` as a fallback, tells luplo whose name to stamp on
+the audit trail — that is the only identity concept core knows.
 """
 
 from __future__ import annotations
@@ -15,28 +19,15 @@ import tomllib
 from pathlib import Path
 from typing import Any, cast
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVER_TOML_FILENAME = "luplo-server.toml"
-
-# Fields that may only be set via environment variables (never from TOML).
-_ENV_ONLY_FIELDS: frozenset[str] = frozenset(
-    {
-        "jwt_secret",
-        "admin_password_initial",
-        "github_client_secret",
-        "google_client_secret",
-    }
-)
 
 
 class LuploServerSettings(BaseSettings):
     """Server configuration.
 
     Priority: env > luplo-server.toml > defaults.
-
-    Sensitive fields are env-only by design (see ``_ENV_ONLY_FIELDS``).
     """
 
     model_config = SettingsConfigDict(
@@ -49,44 +40,19 @@ class LuploServerSettings(BaseSettings):
     # ── Database ────────────────────────────────────────────────────
     db_url: str = "postgresql://localhost/luplo"
 
-    # ── JWT ─────────────────────────────────────────────────────────
-    jwt_secret: str = Field(default="", description="HS256 signing secret (env-only).")
-    jwt_alg: str = "HS256"
-    jwt_ttl_minutes: int = 60
-
-    # ── Admin seed ──────────────────────────────────────────────────
-    admin_email: str = ""
-    admin_password_initial: str = Field(default="", description="Env-only.")
-
-    # ── OAuth (optional, auto-enabled when both id + secret present) ─
-    github_client_id: str = ""
-    github_client_secret: str = Field(default="", description="Env-only.")
-    google_client_id: str = ""
-    google_client_secret: str = Field(default="", description="Env-only.")
-
-    # ── Policy ──────────────────────────────────────────────────────
-    allowed_email_domains: list[str] = Field(default_factory=list)
-    auto_create_users: bool = True
+    # ── Attribution ─────────────────────────────────────────────────
+    # Fallback actor UUID when a request has no X-Actor header. Leaving
+    # this empty forces callers to supply X-Actor on every write.
+    default_actor_id: str = ""
 
     # ── Runtime toggles ─────────────────────────────────────────────
     worker_enabled: bool = False
-    base_url: str = "http://localhost:8000"
-    session_secret: str = Field(default="", description="For OAuth session state.")
-
-    # ── Derived ─────────────────────────────────────────────────────
-    @property
-    def github_enabled(self) -> bool:
-        return bool(self.github_client_id and self.github_client_secret)
-
-    @property
-    def google_enabled(self) -> bool:
-        return bool(self.google_client_id and self.google_client_secret)
+    base_url: str = "http://127.0.0.1:8000"
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
     """Read a flat TOML file. Top-level keys only; nested tables are flattened
-    by concatenating the keys (e.g. ``[oauth.github] client_id = "..."`` becomes
-    ``github_client_id``). Returns an empty dict if the file is missing."""
+    by concatenating the keys. Returns an empty dict if the file is missing."""
     if not path.is_file():
         return {}
     with open(path, "rb") as f:
@@ -105,36 +71,14 @@ def _read_toml(path: Path) -> dict[str, Any]:
 def load_settings(toml_path: Path | None = None) -> LuploServerSettings:
     """Load settings from env + optional TOML file.
 
-    TOML values fill in defaults; env vars take priority (via pydantic-settings).
-    Sensitive fields from ``_ENV_ONLY_FIELDS`` are never taken from TOML.
+    TOML values fill in defaults; env vars take priority.
     """
     toml_path = toml_path or Path.cwd() / SERVER_TOML_FILENAME
     toml_values = _read_toml(toml_path)
-    for field in _ENV_ONLY_FIELDS:
-        toml_values.pop(field, None)
     return LuploServerSettings(**toml_values)
 
 
 def fail_fast_check(settings: LuploServerSettings) -> list[str]:
     """Return a list of missing/invalid settings. Empty list = OK."""
-    problems: list[str] = []
-    if not settings.jwt_secret:
-        problems.append("LUPLO_JWT_SECRET is required (generate with 'lp server init-secrets').")
-    if settings.jwt_ttl_minutes <= 0:
-        problems.append("jwt_ttl_minutes must be positive.")
-    if (
-        settings.admin_email
-        and not settings.admin_password_initial
-        and not _admin_exists_hint(settings)
-    ):
-        problems.append(
-            "LUPLO_ADMIN_EMAIL is set but LUPLO_ADMIN_PASSWORD_INITIAL is not — "
-            "admin seed will be skipped unless the admin already exists."
-        )
-    return problems
-
-
-def _admin_exists_hint(_settings: LuploServerSettings) -> bool:
-    """Best-effort hint: we can't query the DB in this sync check. Caller
-    treats the warning as informational."""
-    return False
+    _ = settings  # no hard requirements after auth removal
+    return []
