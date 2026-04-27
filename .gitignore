@@ -45,3 +45,6 @@ coverage.xml
 # OS
 .DS_Store
 Thumbs.db
+
+# Superpowers plugin local artifacts (plans, notes)
+docs/superpowers/
