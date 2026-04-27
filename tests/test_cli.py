@@ -94,6 +94,20 @@ def test_items_add(env: dict[str, str]) -> None:
     assert "Created" in result.output
 
 
+def test_items_add_and_list_by_work_unit(env: dict[str, str], db_url: str) -> None:
+    """`lp items add --wu` attaches the item; `lp items list --wu` filters to it."""
+    wu_id = _seed_work_unit(db_url, title="Items WU")
+    add_in = runner.invoke(app, ["items", "add", "Inside WU", "--wu", wu_id], env=env)
+    assert add_in.exit_code == 0
+    add_out = runner.invoke(app, ["items", "add", "Outside WU"], env=env)
+    assert add_out.exit_code == 0
+
+    result = runner.invoke(app, ["items", "list", "--wu", wu_id], env=env)
+    assert result.exit_code == 0
+    assert "Inside WU" in result.output
+    assert "Outside WU" not in result.output
+
+
 def test_items_list(env: dict[str, str]) -> None:
     # Add an item first
     runner.invoke(app, ["items", "add", "Listed item"], env=env)
@@ -149,6 +163,53 @@ def test_glossary_pending_empty(env: dict[str, str]) -> None:
     assert "No pending" in result.output
 
 
+def test_glossary_group_create_seeds_canonical(env: dict[str, str]) -> None:
+    create = runner.invoke(app, ["glossary", "group", "create", "vendor-cli"], env=env)
+    assert create.exit_code == 0, create.output
+    assert "vendor-cli" in create.output
+
+    listed = runner.invoke(app, ["glossary", "ls"], env=env)
+    assert "vendor-cli" in listed.output
+
+
+def test_glossary_add_alias_then_remove(env: dict[str, str]) -> None:
+    create = runner.invoke(app, ["glossary", "group", "create", "shop-cli"], env=env)
+    assert create.exit_code == 0
+    # Use the visible 8-char prefix from the output as group id.
+    gid_match = re.search(r"group \[([0-9a-f]{8})\]", create.output)
+    assert gid_match, create.output
+    gid = gid_match.group(1)
+
+    add = runner.invoke(app, ["glossary", "add", "store-cli", "--group", gid], env=env)
+    assert add.exit_code == 0, add.output
+    assert "(alias)" in add.output
+
+    tid_match = re.search(r"\[([0-9a-f]{8})\] \"store-cli\"", add.output)
+    assert tid_match, add.output
+    tid = tid_match.group(1)
+
+    rm = runner.invoke(app, ["glossary", "term", "rm", tid], env=env)
+    assert rm.exit_code == 0, rm.output
+
+
+def test_glossary_term_rm_canonical_with_alias_blocks(env: dict[str, str]) -> None:
+    """Removing a canonical while aliases remain must be refused (ConflictError)."""
+    create = runner.invoke(app, ["glossary", "group", "create", "merchant-cli"], env=env)
+    gid_match = re.search(r"group \[([0-9a-f]{8})\]", create.output)
+    assert gid_match, create.output
+    gid = gid_match.group(1)
+    canon_term_match = re.search(r"canonical term \[([0-9a-f]{8})\]", create.output)
+    assert canon_term_match, create.output
+    canonical_tid = canon_term_match.group(1)
+
+    runner.invoke(app, ["glossary", "add", "biz-cli", "--group", gid], env=env)
+
+    blocked = runner.invoke(app, ["glossary", "term", "rm", canonical_tid], env=env)
+    assert blocked.exit_code != 0
+    combined = (blocked.output or "") + (getattr(blocked, "stderr", "") or "")
+    assert "alias" in combined.lower() or "canonical" in combined.lower()
+
+
 # ── Items: show + list filters ──────────────────────────────────
 
 
@@ -181,6 +242,29 @@ def test_items_search_no_results(env: dict[str, str]) -> None:
 
 
 # ── Work units ──────────────────────────────────────────────────
+
+
+def test_work_ls_includes_closed_when_no_filter(env: dict[str, str], db_url: str) -> None:
+    """`lp work ls` returns work units regardless of status by default."""
+    wu_id = _seed_work_unit(db_url, title="Listable WU")
+    runner.invoke(app, ["work", "close", wu_id], env=env)
+
+    result = runner.invoke(app, ["work", "ls"], env=env)
+    assert result.exit_code == 0
+    assert "Listable WU" in result.output
+    assert wu_id[:8] in result.output
+
+
+def test_work_ls_filters_in_progress(env: dict[str, str], db_url: str) -> None:
+    """--status in_progress excludes closed work units."""
+    open_wu = _seed_work_unit(db_url, title="Still open")
+    closed_wu = _seed_work_unit(db_url, title="Already closed")
+    runner.invoke(app, ["work", "close", closed_wu], env=env)
+
+    result = runner.invoke(app, ["work", "ls", "--status", "in_progress"], env=env)
+    assert result.exit_code == 0
+    assert open_wu[:8] in result.output
+    assert closed_wu[:8] not in result.output
 
 
 def test_work_resume_no_match(env: dict[str, str]) -> None:
@@ -304,6 +388,27 @@ def test_task_blocked_and_skip(env: dict[str, str], db_url: str) -> None:
     tid2 = _task_id_from_output(add2.output)
     skip_r = runner.invoke(app, ["task", "skip", tid2, "--reason", "not needed"], env=env)
     assert skip_r.exit_code == 0
+
+
+def test_task_done_after_done_reports_state_transition_error(
+    env: dict[str, str], db_url: str
+) -> None:
+    """A second 'task done' on an already-done task fails cleanly.
+
+    Regression for the bug where TaskStateTransitionError (a ConflictError
+    subclass) was not handled by _run and surfaced as a Python traceback.
+    """
+    wu_id = _seed_work_unit(db_url, title="State machine WU")
+    add = runner.invoke(app, ["task", "add", "T", "--wu", wu_id], env=env)
+    tid = _task_id_from_output(add.output)
+    runner.invoke(app, ["task", "start", tid], env=env)
+    runner.invoke(app, ["task", "done", tid], env=env)
+
+    second = runner.invoke(app, ["task", "done", tid], env=env)
+    assert second.exit_code != 0
+    assert "Traceback" not in second.output
+    combined = (second.output or "") + (getattr(second, "stderr", "") or "")
+    assert "transition" in combined.lower() or "error" in combined.lower()
 
 
 def test_task_start_collision(env: dict[str, str], db_url: str) -> None:

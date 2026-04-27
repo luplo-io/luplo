@@ -34,6 +34,8 @@ items_app = typer.Typer(name="items", help="Manage items (decisions, knowledge, 
 work_app = typer.Typer(name="work", help="Manage work units.")
 systems_app = typer.Typer(name="systems", help="Manage systems.")
 glossary_app = typer.Typer(name="glossary", help="Manage the glossary.")
+glossary_group_app = typer.Typer(name="group", help="Manage glossary groups.")
+glossary_term_app = typer.Typer(name="term", help="Manage glossary terms.")
 task_app = typer.Typer(name="task", help="Manage tasks (item_type='task').")
 qa_app = typer.Typer(name="qa", help="Manage QA checks (item_type='qa_check').")
 
@@ -41,6 +43,8 @@ app.add_typer(items_app)
 app.add_typer(work_app)
 app.add_typer(systems_app)
 app.add_typer(glossary_app)
+glossary_app.add_typer(glossary_group_app)
+glossary_app.add_typer(glossary_term_app)
 app.add_typer(task_app)
 app.add_typer(qa_app)
 
@@ -94,6 +98,7 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run a coroutine; translate domain errors to CLI exit codes."""
     from luplo.core.errors import (
         AmbiguousIdError,
+        ConflictError,
         IdTooShortError,
         InvalidIdFormatError,
         NotFoundError,
@@ -102,6 +107,8 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     try:
         return asyncio.run(coro)
     except AmbiguousIdError as exc:
+        # Listed before ConflictError because AmbiguousIdError prints
+        # extra match lines.
         typer.echo(f"Error: {exc.message}", err=True)
         for mid, label in exc.matches:
             typer.echo(f"  - {mid[:12]}  {label}", err=True)
@@ -115,6 +122,11 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     except NotFoundError as exc:
         typer.echo(f"Error: {exc.message}", err=True)
         raise typer.Exit(1) from exc
+    except ConflictError as exc:
+        # Catches TaskStateTransitionError, QAStateTransitionError,
+        # TaskAlreadyInProgressError, WorkUnitHasActiveTasksError, etc.
+        typer.echo(f"Error: {exc.message}", err=True)
+        raise typer.Exit(2) from exc
 
 
 # ── Init ─────────────────────────────────────────────────────────
@@ -261,6 +273,12 @@ def items_add(
     body: str | None = typer.Option(None, "--body", "-b", help="Item body."),
     rationale: str | None = typer.Option(None, "--rationale", "-r"),
     system: list[str] | None = typer.Option(None, "--system", "-s"),
+    work_unit: str | None = typer.Option(
+        None,
+        "--wu",
+        "-w",
+        help="Attach this item to a work unit (full UUID).",
+    ),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
@@ -279,6 +297,7 @@ def items_add(
                     body=body,
                     rationale=rationale,
                     system_ids=system or [],
+                    work_unit_id=work_unit,
                 )
             )
             typer.echo(f"Created {item.item_type} [{item.id[:8]}] {item.title}")
@@ -321,6 +340,12 @@ def items_list(
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
     item_type: str | None = typer.Option(None, "--type", "-t"),
     system: str | None = typer.Option(None, "--system", "-s"),
+    work_unit: str | None = typer.Option(
+        None,
+        "--wu",
+        "-w",
+        help="Filter to items attached to this work unit (full UUID).",
+    ),
     limit: int = typer.Option(20, "--limit", "-n"),
 ) -> None:
     """List items for a project."""
@@ -332,6 +357,7 @@ def items_list(
                 pid,
                 item_type=item_type,
                 system_id=system,
+                work_unit_id=work_unit,
                 limit=limit,
             )
             if not results:
@@ -400,6 +426,35 @@ def work_open(
     _run(_do())
 
 
+@work_app.command("ls")
+def work_ls(
+    status: str | None = typer.Option(
+        None,
+        "--status",
+        "-s",
+        help="Filter by status (in_progress | done | abandoned). Default: all.",
+    ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+) -> None:
+    """List work units for a project, ordered by created_at DESC."""
+    pid = _cfg_project(project)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            results = await b.list_work_units(pid, status=status)
+            if not results:
+                typer.echo("No work units.")
+                return
+            for wu in results:
+                systems = f" [{','.join(wu.system_ids)}]" if wu.system_ids else ""
+                typer.echo(
+                    f"  {wu.id[:8]}  [{wu.status:<11}] {wu.title}{systems}"
+                    f"  ({wu.created_at:%Y-%m-%d})"
+                )
+
+    _run(_do())
+
+
 @work_app.command("resume")
 def work_resume(
     query: str = typer.Argument(..., help="Title keyword to search."),
@@ -435,15 +490,10 @@ def work_close(
 ) -> None:
     """Close a work unit. Refuses if an in_progress task remains (use --force)."""
     aid = _cfg_actor(actor)
-    from luplo.core.errors import WorkUnitHasActiveTasksError
 
     async def _do() -> None:
         async with _backend() as b:
-            try:
-                result = await b.close_work_unit(work_id, actor_id=aid, force=force)
-            except WorkUnitHasActiveTasksError as e:
-                typer.echo(f"Error: {e.message}", err=True)
-                raise typer.Exit(2) from e
+            result = await b.close_work_unit(work_id, actor_id=aid, force=force)
             if result:
                 typer.echo(f"Closed [{result.id[:8]}] {result.title} -> {result.status}")
             else:
@@ -593,6 +643,96 @@ def glossary_reject(
                 typer.echo(f'Rejected "{r.rejected_term}"')
             else:
                 typer.echo("Term not found.", err=True)
+
+    _run(_do())
+
+
+@glossary_group_app.command("create")
+def glossary_group_create(
+    canonical: str = typer.Argument(..., help="Canonical surface form for the new group."),
+    definition: str | None = typer.Option(
+        None, "--def", "-d", help="One-line definition stored on the group."
+    ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Create a glossary group plus its canonical surface term."""
+    pid = _cfg_project(project)
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            group, term = await b.create_glossary_group_with_canonical(
+                project_id=pid,
+                canonical=canonical,
+                definition=definition,
+                actor_id=aid,
+            )
+            typer.echo(
+                f"Created group [{group.id[:8]}] {group.canonical}"
+                f" with canonical term [{term.id[:8]}]"
+            )
+
+    _run(_do())
+
+
+@glossary_app.command("add")
+def glossary_add(
+    surface: str = typer.Argument(..., help="New surface form to add to a group."),
+    group: str = typer.Option(
+        ...,
+        "--group",
+        "-g",
+        help="Target group ID (full UUID or ≥8-char hex prefix).",
+    ),
+    canonical: bool = typer.Option(
+        False,
+        "--canonical",
+        "-c",
+        help="Promote this term to canonical, demoting any existing canonical to alias.",
+    ),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Add a new alias (or canonical) term to an existing group."""
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            term = await b.add_term_to_group(
+                group,
+                surface=surface,
+                actor_id=aid,
+                as_canonical=canonical,
+            )
+            group_label = term.group_id[:8] if term.group_id else "—"
+            typer.echo(
+                f'Added [{term.id[:8]}] "{term.surface}" -> group:{group_label} ({term.status})'
+            )
+
+    _run(_do())
+
+
+@glossary_term_app.command("rm")
+def glossary_term_rm(
+    term_id: str = typer.Argument(..., help="Term ID (full UUID or ≥8-char hex prefix)."),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Permanently remove a glossary term.
+
+    Removing the last canonical/alias term in a group cascades — the
+    group (plus its rejection records) is dropped as well. Removing the
+    canonical while aliases remain is refused; promote one alias first.
+    """
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            removed = await b.delete_glossary_term(term_id, actor_id=aid)
+            if removed:
+                typer.echo(f"Removed term {term_id}")
+            else:
+                typer.echo(f"Term {term_id} not found.", err=True)
+                raise typer.Exit(1)
 
     _run(_do())
 
@@ -947,15 +1087,10 @@ def task_start(
     """Transition task to 'in_progress' (enforces 1 in_progress per WU)."""
     aid = _cfg_actor(actor)
     pid = _cfg_project(None)
-    from luplo.core.errors import TaskAlreadyInProgressError
 
     async def _do() -> None:
         async with _backend() as b:
-            try:
-                t = await b.start_task(task_id, actor_id=aid, project_id=pid)
-            except TaskAlreadyInProgressError as e:
-                typer.echo(f"Error: {e.message}", err=True)
-                raise typer.Exit(1) from e
+            t = await b.start_task(task_id, actor_id=aid, project_id=pid)
             _print_task(t)
 
     _run(_do())

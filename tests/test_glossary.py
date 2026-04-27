@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import pytest
 
+from luplo.core.errors import GlossaryGroupHasActiveTermsError, NotFoundError
 from luplo.core.glossary import (
+    add_term_to_group,
     approve_term,
     create_glossary_group,
+    create_glossary_group_with_canonical,
     create_glossary_term,
+    delete_glossary_term,
     expand_query,
     get_glossary_group,
     list_glossary_groups,
@@ -372,3 +376,295 @@ async def test_expand_query_mixed(conn: object, seed_project: str) -> None:
 async def test_expand_query_empty(conn: object, seed_project: str) -> None:
     result = await expand_query(conn, "", seed_project)  # type: ignore[arg-type]
     assert result == ""
+
+
+# ── Direct user-facing add / delete ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_group_with_canonical_seeds_term(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    group, term = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        definition="NPC merchant system",
+        created_by=seed_actor,
+    )
+    assert group.canonical == "vendor"
+    assert term.group_id == group.id
+    assert term.status == "canonical"
+    assert term.surface == "vendor"
+    assert term.normalized == "vendor"
+
+
+@pytest.mark.asyncio
+async def test_add_term_to_group_default_alias(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    group, _ = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    term = await add_term_to_group(
+        conn,  # type: ignore[arg-type]
+        group.id,
+        surface="Shop",
+        actor_id=seed_actor,
+    )
+    assert term.status == "alias"
+    assert term.group_id == group.id
+    assert term.surface == "Shop"
+    assert term.normalized == "shop"
+
+
+@pytest.mark.asyncio
+async def test_add_term_as_canonical_demotes_existing(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    group, original = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    promoted = await add_term_to_group(
+        conn,  # type: ignore[arg-type]
+        group.id,
+        surface="merchant",
+        actor_id=seed_actor,
+        as_canonical=True,
+    )
+    assert promoted.status == "canonical"
+
+    pending_or_active = await list_pending_terms(
+        conn,  # type: ignore[arg-type]
+        seed_project,
+        limit=50,
+    )
+    # Existing canonical was demoted to alias — fetch directly.
+    async with conn.cursor() as cur:  # type: ignore[union-attr]
+        await cur.execute(
+            "SELECT status FROM glossary_terms WHERE id = %s",
+            (original.id,),
+        )
+        row = await cur.fetchone()
+    assert row is not None
+    assert row[0] == "alias"
+    del pending_or_active
+
+
+@pytest.mark.asyncio
+async def test_add_term_to_unknown_group_raises(conn: object, seed_actor: str) -> None:
+    with pytest.raises(NotFoundError):
+        await add_term_to_group(
+            conn,  # type: ignore[arg-type]
+            "00000000-dead-4dea-8dea-000000000000",
+            surface="ghost",
+            actor_id=seed_actor,
+        )
+
+
+@pytest.mark.asyncio
+async def test_delete_alias_keeps_group(conn: object, seed_project: str, seed_actor: str) -> None:
+    group, _canonical = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    alias = await add_term_to_group(
+        conn,  # type: ignore[arg-type]
+        group.id,
+        surface="shop",
+        actor_id=seed_actor,
+    )
+    removed = await delete_glossary_term(
+        conn,  # type: ignore[arg-type]
+        alias.id,
+        actor_id=seed_actor,
+    )
+    assert removed is True
+
+    still = await get_glossary_group(conn, group.id)  # type: ignore[arg-type]
+    assert still is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_canonical_with_aliases_refused(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    group, canonical = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    await add_term_to_group(
+        conn,  # type: ignore[arg-type]
+        group.id,
+        surface="shop",
+        actor_id=seed_actor,
+    )
+
+    with pytest.raises(GlossaryGroupHasActiveTermsError):
+        await delete_glossary_term(
+            conn,  # type: ignore[arg-type]
+            canonical.id,
+            actor_id=seed_actor,
+        )
+
+    still = await get_glossary_group(conn, group.id)  # type: ignore[arg-type]
+    assert still is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_last_canonical_cascades_group(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    group, canonical = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    removed = await delete_glossary_term(
+        conn,  # type: ignore[arg-type]
+        canonical.id,
+        actor_id=seed_actor,
+    )
+    assert removed is True
+
+    gone = await get_glossary_group(conn, group.id)  # type: ignore[arg-type]
+    assert gone is None
+
+
+@pytest.mark.asyncio
+async def test_delete_unknown_term_returns_false(conn: object, seed_actor: str) -> None:
+    removed = await delete_glossary_term(
+        conn,  # type: ignore[arg-type]
+        "00000000-dead-4dea-8dea-000000000000",
+        actor_id=seed_actor,
+    )
+    assert removed is False
+
+
+# ── Prefix resolution regression ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_approve_term_resolves_prefix(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """approve_term must accept hex prefixes for both term_id and group_id."""
+    group, _ = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    pending = await create_glossary_term(
+        conn,  # type: ignore[arg-type]
+        group_id=None,
+        surface="merchant",
+        normalized="merchant",
+        status="pending",
+        source_item_id=None,
+    )
+
+    approved = await approve_term(
+        conn,  # type: ignore[arg-type]
+        pending.id[:8],
+        group_id=group.id[:8],
+        actor_id=seed_actor,
+    )
+    assert approved is not None
+    assert approved.status == "alias"
+    assert approved.group_id == group.id
+
+
+@pytest.mark.asyncio
+async def test_merge_groups_resolves_prefixes(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    src, _ = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="shop",
+        created_by=seed_actor,
+    )
+    dst, _ = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    result = await merge_groups(
+        conn,  # type: ignore[arg-type]
+        src.id[:8],
+        dst.id[:8],
+        actor_id=seed_actor,
+    )
+    assert result is not None
+    assert result.id == dst.id
+
+    src_gone = await get_glossary_group(conn, src.id)  # type: ignore[arg-type]
+    assert src_gone is None
+
+
+@pytest.mark.asyncio
+async def test_split_term_resolves_prefix(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    group, canonical = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    alias = await add_term_to_group(
+        conn,  # type: ignore[arg-type]
+        group.id,
+        surface="merchant",
+        actor_id=seed_actor,
+    )
+    new_group = await split_term(
+        conn,  # type: ignore[arg-type]
+        alias.id[:8],
+        new_canonical="merchant",
+        actor_id=seed_actor,
+    )
+    assert new_group is not None
+    assert new_group.canonical == "merchant"
+    assert new_group.id != group.id
+    del canonical
+
+
+@pytest.mark.asyncio
+async def test_reject_term_resolves_prefix(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    group, _ = await create_glossary_group_with_canonical(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        canonical="vendor",
+        created_by=seed_actor,
+    )
+    pending = await create_glossary_term(
+        conn,  # type: ignore[arg-type]
+        group_id=group.id,
+        surface="bogus",
+        normalized="bogus",
+        status="pending",
+        source_item_id=None,
+    )
+    rejection = await reject_term(
+        conn,  # type: ignore[arg-type]
+        pending.id[:8],
+        actor_id=seed_actor,
+    )
+    assert rejection is not None
+    assert rejection.rejected_term == "bogus"

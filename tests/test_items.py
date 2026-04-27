@@ -253,15 +253,18 @@ async def test_list_items_filter_by_system(
 async def test_list_items_filter_by_work_unit(
     conn: object, seed_project: str, seed_actor: str
 ) -> None:
-    # Create a work unit first
+    # Create a work unit first (full UUID — work_units.id is TEXT but
+    # _resolve_work_unit_id treats anything that's not a UUID/prefix as
+    # invalid format. Use a real UUID here.)
+    wu_id = "11111111-2222-4333-8444-555555555555"
     await conn.execute(  # type: ignore[union-attr]
         "INSERT INTO work_units (id, project_id, title, created_by) VALUES (%s, %s, %s, %s)",
-        ("wu-1", seed_project, "Design sprint", seed_actor),
+        (wu_id, seed_project, "Design sprint", seed_actor),
     )
 
     await create_item(
         conn,  # type: ignore[arg-type]
-        _decision(seed_project, seed_actor, title="In WU", work_unit_id="wu-1"),
+        _decision(seed_project, seed_actor, title="In WU", work_unit_id=wu_id),
     )
     await create_item(
         conn,  # type: ignore[arg-type]
@@ -271,10 +274,70 @@ async def test_list_items_filter_by_work_unit(
     items = await list_items(
         conn,
         seed_project,
-        work_unit_id="wu-1",  # type: ignore[arg-type]
+        work_unit_id=wu_id,  # type: ignore[arg-type]
     )
     assert len(items) == 1
     assert items[0].title == "In WU"
+
+
+@pytest.mark.asyncio
+async def test_create_item_resolves_work_unit_prefix(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """create_item must accept a work_unit_id hex prefix, not just full UUID.
+
+    Regression for the release-blocking bug where `lp items add --wu <prefix>`
+    raised an FK-violation traceback because the CLI passed the displayed
+    8-char prefix straight through to INSERT.
+    """
+    wu_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    await conn.execute(  # type: ignore[union-attr]
+        "INSERT INTO work_units (id, project_id, title, created_by) VALUES (%s, %s, %s, %s)",
+        (wu_id, seed_project, "Prefix WU", seed_actor),
+    )
+
+    item = await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="ByPrefix", work_unit_id=wu_id[:8]),
+    )
+    assert item.work_unit_id == wu_id
+
+    filtered = await list_items(
+        conn,  # type: ignore[arg-type]
+        seed_project,
+        work_unit_id=wu_id[:8],
+    )
+    assert any(i.title == "ByPrefix" for i in filtered)
+
+
+@pytest.mark.asyncio
+async def test_list_items_returns_chain_head_only(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """list_items must return only the head of each supersede chain.
+
+    A chain head is a row with no successor. Returning intermediate rows
+    breaks the head-identity contract: the user could copy a stale ID
+    into a new supersede call.
+    """
+    v1 = await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="V1"),
+    )
+    v2 = await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="V2", supersedes_id=v1.id),
+    )
+    v3 = await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="V3", supersedes_id=v2.id),
+    )
+
+    items = await list_items(conn, seed_project)  # type: ignore[arg-type]
+    ids = {i.id for i in items}
+    assert v3.id in ids
+    assert v1.id not in ids
+    assert v2.id not in ids
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,7 @@ def test_mcp_tools_registered() -> None:
     tool_names = {t.name for t in mcp._tool_manager.list_tools()}
     expected = {
         "luplo_work_open",
+        "luplo_work_list",
         "luplo_work_resume",
         "luplo_work_close",
         "luplo_item_upsert",
@@ -55,7 +56,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 22
+    assert len(tools) == 23
 
 
 # ── Invocation tests ────────────────────────────────────────────
@@ -125,6 +126,27 @@ async def test_mcp_work_open_and_close(mcp_backend: Any) -> None:
     wu_id = _wu_id_from_text(out)
     closed = await mcp_mod.luplo_work_close(work_unit_id=wu_id, actor_id=_MCP_ACTOR)
     assert "Closed" in closed
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_work_list_filters_by_status(mcp_backend: Any) -> None:
+    open_out = await mcp_mod.luplo_work_open(
+        title="Listable MCP",
+        project_id=_MCP_PROJECT,
+        actor_id=_MCP_ACTOR,
+    )
+    wu_id = _wu_id_from_text(open_out)
+
+    listed = await mcp_mod.luplo_work_list(project_id=_MCP_PROJECT, status="in_progress")
+    assert wu_id[:8] in listed
+
+    await mcp_mod.luplo_work_close(work_unit_id=wu_id, actor_id=_MCP_ACTOR)
+
+    after_close = await mcp_mod.luplo_work_list(project_id=_MCP_PROJECT, status="in_progress")
+    assert wu_id[:8] not in after_close
+
+    all_status = await mcp_mod.luplo_work_list(project_id=_MCP_PROJECT)
+    assert wu_id[:8] in all_status
 
 
 @pytest.mark.asyncio(loop_scope="module")

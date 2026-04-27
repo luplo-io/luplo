@@ -572,6 +572,75 @@ class LocalBackend:
         async with self.pool.connection() as conn:
             return await glossary.list_pending_terms(conn, project_id, limit=limit)
 
+    async def create_glossary_group_with_canonical(
+        self,
+        *,
+        project_id: str,
+        canonical: str,
+        definition: str | None = None,
+        actor_id: str | None = None,
+    ) -> tuple[GlossaryGroup, GlossaryTerm]:
+        async with self.pool.connection() as conn:
+            group, term = await glossary.create_glossary_group_with_canonical(
+                conn,
+                project_id=project_id,
+                canonical=canonical,
+                definition=definition,
+                created_by=actor_id,
+            )
+            if actor_id:
+                await audit.record_audit(
+                    conn,
+                    actor_id=actor_id,
+                    action="create",
+                    target_type="glossary_group",
+                    target_id=group.id,
+                )
+            return group, term
+
+    async def add_term_to_group(
+        self,
+        group_id: str,
+        *,
+        surface: str,
+        actor_id: str,
+        as_canonical: bool = False,
+    ) -> GlossaryTerm:
+        async with self.pool.connection() as conn:
+            term = await glossary.add_term_to_group(
+                conn,
+                group_id,
+                surface=surface,
+                actor_id=actor_id,
+                as_canonical=as_canonical,
+            )
+            await audit.record_audit(
+                conn,
+                actor_id=actor_id,
+                action="create",
+                target_type="glossary_term",
+                target_id=term.id,
+            )
+            return term
+
+    async def delete_glossary_term(
+        self,
+        term_id: str,
+        *,
+        actor_id: str,
+    ) -> bool:
+        async with self.pool.connection() as conn:
+            removed = await glossary.delete_glossary_term(conn, term_id, actor_id=actor_id)
+            if removed:
+                await audit.record_audit(
+                    conn,
+                    actor_id=actor_id,
+                    action="delete",
+                    target_type="glossary_term",
+                    target_id=term_id,
+                )
+            return removed
+
     async def approve_term(
         self,
         term_id: str,

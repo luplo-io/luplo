@@ -163,6 +163,32 @@ async def luplo_work_open(
 
 
 @mcp.tool()
+async def luplo_work_list(project_id: str, status: str = "") -> str:
+    """List work units in a project, ordered by created_at DESC.
+
+    Use this to recall recently closed work units (e.g. to re-open a
+    follow-up task) or to inspect the backlog of in_progress units. For
+    keyword search across in_progress units, prefer ``luplo_work_resume``.
+
+    Args:
+        project_id: Project scope.
+        status: Optional filter — "in_progress", "done", or "abandoned".
+            Empty string returns all statuses.
+    """
+    b = await _get_backend()
+    rows = await b.list_work_units(project_id, status=status or None)
+    if not rows:
+        return "No work units."
+    lines = [f"Found {len(rows)} work unit(s):"]
+    for wu in rows:
+        systems = f" [{', '.join(wu.system_ids)}]" if wu.system_ids else ""
+        lines.append(
+            f"- [{wu.id[:8]}] [{wu.status}] {wu.title}{systems} ({wu.created_at:%Y-%m-%d})"
+        )
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def luplo_work_resume(query: str, project_id: str) -> str:
     """Find in-progress work units by title keyword + their open tasks/QA.
 

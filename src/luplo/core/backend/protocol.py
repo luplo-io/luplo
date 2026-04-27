@@ -469,6 +469,41 @@ class Backend(Protocol):
         limit: int = 50,
     ) -> list[GlossaryTerm]: ...
 
+    async def create_glossary_group_with_canonical(
+        self,
+        *,
+        project_id: str,
+        canonical: str,
+        definition: str | None = None,
+        actor_id: str | None = None,
+    ) -> tuple[GlossaryGroup, GlossaryTerm]:
+        """Create a group plus its canonical surface term in one step."""
+        ...
+
+    async def add_term_to_group(
+        self,
+        group_id: str,
+        *,
+        surface: str,
+        actor_id: str,
+        as_canonical: bool = False,
+    ) -> GlossaryTerm:
+        """Add a new term to a group; default status is alias.
+
+        With ``as_canonical=True`` the existing canonical (if any) is
+        demoted to alias before this term is inserted as canonical.
+        """
+        ...
+
+    async def delete_glossary_term(
+        self,
+        term_id: str,
+        *,
+        actor_id: str,
+    ) -> bool:
+        """Permanently delete a term; cascade-delete the group when empty."""
+        ...
+
     async def approve_term(
         self,
         term_id: str,

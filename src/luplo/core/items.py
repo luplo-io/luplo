@@ -16,9 +16,31 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from luplo.core import item_types as _item_types
-from luplo.core.errors import ValidationError
+from luplo.core.errors import NotFoundError, ValidationError
 from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import Item, ItemCreate
+
+
+async def _resolve_work_unit_id(
+    conn: AsyncConnection[Any],
+    work_unit_id: str | None,
+    project_id: str | None,
+) -> str | None:
+    """Resolve a work_unit_id prefix to its full UUID.
+
+    The CLI and MCP both display 8-char ID prefixes; users naturally copy
+    those back into ``--wu`` / ``work_unit_id`` arguments. Without prefix
+    resolution the FK-bound INSERT/SELECT either silently misses (filter)
+    or trips a foreign-key violation traceback (insert). Resolving here
+    keeps every caller consistent.
+    """
+    if work_unit_id is None:
+        return None
+    resolved = await resolve_uuid_prefix(conn, "work_units", work_unit_id, project_id=project_id)
+    if resolved is None:
+        raise NotFoundError(f"Work unit {work_unit_id!r} not found")
+    return resolved
+
 
 _ITEM_FIELDS: frozenset[str] = frozenset(f.name for f in dataclasses.fields(Item))
 
@@ -100,6 +122,7 @@ async def create_item(conn: AsyncConnection[Any], data: ItemCreate) -> Item:
         raise ValidationError("item_type='research' requires source_url (the cached URL)")
 
     item_id = str(uuid.uuid4())
+    resolved_wu = await _resolve_work_unit_id(conn, data.work_unit_id, data.project_id)
 
     params: dict[str, Any] = {
         "id": item_id,
@@ -109,7 +132,7 @@ async def create_item(conn: AsyncConnection[Any], data: ItemCreate) -> Item:
         "body": data.body,
         "source_url": data.source_url,
         "parent_item_id": data.parent_item_id,
-        "work_unit_id": data.work_unit_id,
+        "work_unit_id": resolved_wu,
         "source_ref": data.source_ref,
         "actor_id": data.actor_id,
         "system_ids": data.system_ids or None,
@@ -252,6 +275,10 @@ async def list_items(
     """
     conditions: list[sql.Composable] = [
         sql.SQL("project_id = %(project_id)s"),
+        # Only return chain heads — rows with no successor. Intermediate
+        # supersede rows would let callers copy a stale ID into a new
+        # supersede call, breaking the head-identity contract.
+        sql.SQL("NOT EXISTS (SELECT 1 FROM items s WHERE s.supersedes_id = items.id)"),
     ]
     params: dict[str, Any] = {
         "project_id": project_id,
@@ -271,8 +298,9 @@ async def list_items(
         params["system_id"] = system_id
 
     if work_unit_id is not None:
+        resolved_wu_filter = await _resolve_work_unit_id(conn, work_unit_id, project_id)
         conditions.append(sql.SQL("work_unit_id = %(work_unit_id)s"))
-        params["work_unit_id"] = work_unit_id
+        params["work_unit_id"] = resolved_wu_filter
 
     where = sql.SQL(" AND ").join(conditions)
     query = sql.SQL(

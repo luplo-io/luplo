@@ -18,8 +18,63 @@ from typing import Any
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
+from luplo.core.errors import GlossaryGroupHasActiveTermsError, NotFoundError
 from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import GlossaryGroup, GlossaryRejection, GlossaryTerm
+
+
+async def _resolve_group(
+    conn: AsyncConnection[Any],
+    group_id: str,
+    *,
+    project_id: str | None = None,
+) -> str | None:
+    """Resolve a glossary group ID or hex prefix; returns the full ID or None.
+
+    ``resolve_uuid_prefix`` short-circuits on full UUIDs without touching
+    the DB, so we follow up with an existence check when the input was a
+    full UUID. Otherwise a non-existent UUID would propagate silently
+    until a downstream INSERT trips an FK violation.
+    """
+    resolved = await resolve_uuid_prefix(
+        conn,
+        "glossary_groups",
+        group_id,
+        project_id=project_id,
+        label_column="canonical",
+    )
+    if resolved is None or resolved != group_id:
+        return resolved
+    async with conn.cursor() as cur:
+        await cur.execute("SELECT 1 FROM glossary_groups WHERE id = %s", (resolved,))
+        if await cur.fetchone() is None:
+            return None
+    return resolved
+
+
+async def _resolve_term(conn: AsyncConnection[Any], term_id: str) -> str | None:
+    """Resolve a glossary term ID or hex prefix.
+
+    glossary_terms has no project_id column (project scope flows through
+    group_id), so prefix collisions are unscoped. UUID prefix space makes
+    cross-project clashes negligibly rare in practice. Like
+    :func:`_resolve_group`, we verify existence for full UUIDs as well so
+    callers can rely on a ``None`` to mean "no such row."
+    """
+    resolved = await resolve_uuid_prefix(
+        conn,
+        "glossary_terms",
+        term_id,
+        label_column="surface",
+    )
+    if resolved is None or resolved != term_id:
+        return resolved
+    async with conn.cursor() as cur:
+        await cur.execute("SELECT 1 FROM glossary_terms WHERE id = %s", (resolved,))
+        if await cur.fetchone() is None:
+            return None
+    return resolved
+
 
 # ── Column definitions ───────────────────────────────────────────
 
@@ -134,13 +189,7 @@ async def get_glossary_group(
     :class:`AmbiguousIdError` when a prefix matches multiple groups.
     Pass *project_id* to scope prefix lookups.
     """
-    resolved = await resolve_uuid_prefix(
-        conn,
-        "glossary_groups",
-        group_id,
-        project_id=project_id,
-        label_column="canonical",
-    )
+    resolved = await _resolve_group(conn, group_id, project_id=project_id)
     if resolved is None:
         return None
     query = sql.SQL("SELECT {columns} FROM glossary_groups WHERE id = %(id)s").format(
@@ -291,6 +340,13 @@ async def approve_term(
     Returns:
         The updated term, or ``None`` if not found.
     """
+    resolved_term = await _resolve_term(conn, term_id)
+    if resolved_term is None:
+        return None
+    resolved_group = await _resolve_group(conn, group_id)
+    if resolved_group is None:
+        raise NotFoundError(f"Glossary group {group_id!r} not found")
+
     new_status = "canonical" if as_canonical else "alias"
     query = sql.SQL(
         "UPDATE glossary_terms SET"
@@ -306,8 +362,8 @@ async def approve_term(
         await cur.execute(
             query,
             {
-                "term_id": term_id,
-                "group_id": group_id,
+                "term_id": resolved_term,
+                "group_id": resolved_group,
                 "status": new_status,
                 "actor_id": actor_id,
             },
@@ -331,6 +387,10 @@ async def reject_term(
     Returns:
         The rejection record, or ``None`` if the term was not found.
     """
+    resolved = await _resolve_term(conn, term_id)
+    if resolved is None:
+        return None
+
     # Get term info for the rejection record
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
@@ -338,7 +398,7 @@ async def reject_term(
             "  status = 'rejected', decided_by = %(actor)s, decided_at = now()"
             " WHERE id = %(id)s"
             " RETURNING group_id, surface",
-            {"id": term_id, "actor": actor_id},
+            {"id": resolved, "actor": actor_id},
         )
         term_row = await cur.fetchone()
         if not term_row or not term_row["group_id"]:
@@ -390,21 +450,21 @@ async def merge_groups(
         The target ``GlossaryGroup`` after merge, or ``None`` if
         either group was not found.
     """
+    resolved_source = await _resolve_group(conn, source_group_id)
+    resolved_target = await _resolve_group(conn, target_group_id)
+    if resolved_source is None or resolved_target is None:
+        return None
+
     # Move all terms from source to target
-    result = await conn.execute(
+    await conn.execute(
         "UPDATE glossary_terms SET group_id = %(target)s WHERE group_id = %(source)s",
-        {"source": source_group_id, "target": target_group_id},
+        {"source": resolved_source, "target": resolved_target},
     )
-    if result.rowcount == 0:
-        # Source had no terms or doesn't exist — check if target exists
-        target = await get_glossary_group(conn, target_group_id)
-        if not target:
-            return None
 
     # Delete source group
     await conn.execute(
         "DELETE FROM glossary_groups WHERE id = %(id)s",
-        {"id": source_group_id},
+        {"id": resolved_source},
     )
 
     # Update review timestamp on target
@@ -416,7 +476,7 @@ async def merge_groups(
     ).format(returning=_GROUP_RETURNING)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": target_group_id, "actor": actor_id})
+        await cur.execute(query, {"id": resolved_target, "actor": actor_id})
         row = await cur.fetchone()
         return _row_to_group(row) if row else None
 
@@ -441,13 +501,17 @@ async def split_term(
     Returns:
         The new ``GlossaryGroup``, or ``None`` if the term was not found.
     """
+    resolved = await _resolve_term(conn, term_id)
+    if resolved is None:
+        return None
+
     # Get term's current group to inherit project_id
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             "SELECT gt.id, gg.project_id FROM glossary_terms gt"
             " JOIN glossary_groups gg ON gt.group_id = gg.id"
             " WHERE gt.id = %(id)s",
-            {"id": term_id},
+            {"id": resolved},
         )
         row = await cur.fetchone()
         if not row:
@@ -470,10 +534,186 @@ async def split_term(
         "  decided_by = %(actor)s,"
         "  decided_at = now()"
         " WHERE id = %(id)s",
-        {"id": term_id, "group_id": new_group.id, "actor": actor_id},
+        {"id": resolved, "group_id": new_group.id, "actor": actor_id},
     )
 
     return new_group
+
+
+# ── Direct user-facing add / delete ──────────────────────────────
+
+
+async def create_glossary_group_with_canonical(
+    conn: AsyncConnection[Any],
+    *,
+    project_id: str,
+    canonical: str,
+    definition: str | None = None,
+    created_by: str | None = None,
+) -> tuple[GlossaryGroup, GlossaryTerm]:
+    """Create a glossary group AND its canonical surface term in one shot.
+
+    The CLI `lp glossary group create` flow assumes a group always has a
+    canonical term — separating the two creation steps would let users
+    leave the system in a broken intermediate state.
+
+    Args:
+        conn: Async psycopg connection.
+        project_id: Owning project.
+        canonical: Canonical surface form. Becomes both the group's
+            ``canonical`` field and the surface of the seeded term.
+        definition: Optional one-line definition stored on the group.
+        created_by: Actor who created this.
+
+    Returns:
+        Tuple of (group, canonical_term).
+    """
+    group = await create_glossary_group(
+        conn,
+        project_id=project_id,
+        canonical=canonical,
+        definition=definition,
+        created_by=created_by,
+    )
+    term = await create_glossary_term(
+        conn,
+        group_id=group.id,
+        surface=canonical,
+        normalized=canonical.lower(),
+        status="canonical",
+    )
+    return group, term
+
+
+async def add_term_to_group(
+    conn: AsyncConnection[Any],
+    group_id: str,
+    *,
+    surface: str,
+    actor_id: str,
+    as_canonical: bool = False,
+) -> GlossaryTerm:
+    """Add a new surface term to an existing group.
+
+    Default status is ``alias``. When *as_canonical* is true the existing
+    canonical (if any) is demoted to ``alias`` first — there is at most
+    one canonical per group.
+
+    Args:
+        conn: Async psycopg connection.
+        group_id: Target group (full UUID or ≥8 hex prefix).
+        surface: New surface form. Stored verbatim; ``normalized`` is the
+            lowercased copy.
+        actor_id: Who added this term.
+        as_canonical: Promote this term to canonical, demoting the
+            current canonical to alias.
+
+    Returns:
+        The newly created ``GlossaryTerm``.
+
+    Raises:
+        NotFoundError: If the group does not exist.
+    """
+    resolved = await _resolve_group(conn, group_id)
+    if resolved is None:
+        raise NotFoundError(f"Glossary group {group_id!r} not found")
+
+    if as_canonical:
+        await conn.execute(
+            "UPDATE glossary_terms SET"
+            "  status = 'alias', decided_by = %(actor)s, decided_at = now()"
+            " WHERE group_id = %(g)s AND status = 'canonical'",
+            {"g": resolved, "actor": actor_id},
+        )
+
+    new_status = "canonical" if as_canonical else "alias"
+    return await create_glossary_term(
+        conn,
+        group_id=resolved,
+        surface=surface,
+        normalized=surface.lower(),
+        status=new_status,
+    )
+
+
+async def delete_glossary_term(
+    conn: AsyncConnection[Any],
+    term_id: str,
+    *,
+    actor_id: str,
+) -> bool:
+    """Permanently remove a glossary term.
+
+    Cascade rule (option B): removing the last canonical/alias term in a
+    group deletes the group as well, including any rejection records and
+    any leftover pending/rejected terms in the same group. Removing the
+    canonical while aliases still exist is refused — promote one alias to
+    canonical first, or remove the aliases.
+
+    Args:
+        conn: Async psycopg connection.
+        term_id: Term ID or hex prefix (≥8 chars).
+        actor_id: Who is removing the term (audit trail).
+
+    Returns:
+        ``True`` if a term was removed, ``False`` if the term was not
+        found.
+
+    Raises:
+        GlossaryGroupHasActiveTermsError: When removing the canonical
+            would leave aliases without a canonical anchor.
+    """
+    del actor_id  # reserved for future audit fields
+    resolved = await _resolve_term(conn, term_id)
+    if resolved is None:
+        return False
+
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "SELECT id, group_id, status FROM glossary_terms WHERE id = %(id)s",
+            {"id": resolved},
+        )
+        term = await cur.fetchone()
+    if term is None:
+        return False
+
+    group_id_val = term["group_id"]
+    status = term["status"]
+
+    if status == "canonical" and group_id_val is not None:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                "SELECT count(*) AS c FROM glossary_terms"
+                " WHERE group_id = %(g)s"
+                "   AND id <> %(id)s"
+                "   AND status IN ('canonical', 'alias')",
+                {"g": group_id_val, "id": resolved},
+            )
+            row = await cur.fetchone()
+        active_siblings = int(row["c"]) if row else 0
+        if active_siblings > 0:
+            raise GlossaryGroupHasActiveTermsError(group_id_val, resolved)
+
+        # Last active term in the group: cascade delete the whole group.
+        await conn.execute(
+            "DELETE FROM glossary_rejections WHERE group_id = %(g)s",
+            {"g": group_id_val},
+        )
+        await conn.execute(
+            "DELETE FROM glossary_terms WHERE group_id = %(g)s",
+            {"g": group_id_val},
+        )
+        await conn.execute(
+            "DELETE FROM glossary_groups WHERE id = %(g)s",
+            {"g": group_id_val},
+        )
+        return True
+
+    await conn.execute(
+        "DELETE FROM glossary_terms WHERE id = %(id)s",
+        {"id": resolved},
+    )
+    return True
 
 
 # ── Query expansion ──────────────────────────────────────────────

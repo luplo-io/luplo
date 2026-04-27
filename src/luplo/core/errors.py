@@ -100,6 +100,27 @@ class QAStateTransitionError(ConflictError):
         self.to_status = to_status
 
 
+# ── Glossary ─────────────────────────────────────────────────────
+
+
+class GlossaryGroupHasActiveTermsError(ConflictError):
+    """Raised when removing a canonical term while alias terms remain.
+
+    Cascade-delete (option B) only fires when the canonical is the *last*
+    active term in the group. If aliases remain the caller must promote
+    one to canonical or remove them first.
+    """
+
+    def __init__(self, group_id: str, term_id: str) -> None:
+        super().__init__(
+            f"Cannot remove canonical term {term_id!r}: group {group_id!r} "
+            "still has alias terms. Promote one to canonical, or remove the "
+            "aliases first."
+        )
+        self.group_id = group_id
+        self.term_id = term_id
+
+
 # ── Work Units ───────────────────────────────────────────────────
 
 
