@@ -11,6 +11,79 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-27
+
+A "surface catches up to core" release. Seven gaps where the CLI/MCP
+surface was thinner than the underlying core get filled, plus two
+release-blocking invariant bugs in items get fixed. No schema changes.
+
+### Added
+
+- **`lp work ls` + `luplo_work_list` MCP tool** — list every work unit
+  in a project, optionally filtered by `--status`. Closes the
+  "I just closed it, how do I find it again" gap (`luplo_work_resume`
+  only searches `in_progress` titles).
+- **`--wu` on `lp items add` and `lp items list`** — attach a new
+  item to a work unit, or filter the list to one. The flag accepts
+  the same 8-char hex prefix the CLI prints elsewhere; the core layer
+  resolves it transparently.
+- **Direct glossary curation** — three new commands so users can
+  build the glossary by hand instead of waiting for extraction:
+  - `lp glossary group create <canonical> [--def TEXT]` — creates the
+    group plus a `canonical`-status seed term in one shot. The two
+    cannot be created separately at the CLI level (a group without a
+    canonical term is a broken intermediate state).
+  - `lp glossary add <surface> --group <id> [--canonical]` — adds a
+    new term to a group. Default status is `alias`; passing
+    `--canonical` demotes the existing canonical to alias and promotes
+    this term in the same transaction.
+  - `lp glossary term rm <id>` — permanently deletes a term. Removing
+    the *last* canonical/alias term in a group cascades the whole
+    group (and its rejection records, and any leftover pending /
+    rejected siblings). Removing the canonical while aliases still
+    exist is refused with `GlossaryGroupHasActiveTermsError`.
+- **`GlossaryGroupHasActiveTermsError`** — new `ConflictError`
+  subclass surfaced when the cascade-delete refuses (above).
+
+### Changed
+
+- **`_run` translates every `ConflictError` into a clean
+  `Error: ...` line + exit 2** instead of letting it surface as a
+  Python traceback. Covers `TaskStateTransitionError`,
+  `QAStateTransitionError`, `TaskAlreadyInProgressError`, and
+  `WorkUnitHasActiveTasksError` uniformly. The bespoke `try` blocks
+  in `work close` and `task start` are removed.
+- **Uniform prefix resolution across glossary curation** — `approve_term`,
+  `merge_groups`, `split_term`, and `reject_term` all resolve hex
+  prefixes for term-ids and group-ids via shared helpers; the helpers
+  also verify existence for full UUIDs so `None` reliably means "no
+  such row" instead of cascading into a downstream FK violation.
+
+### Fixed
+
+- **`core.items.list_items` now returns only chain heads** —
+  `NOT EXISTS (SELECT 1 FROM items s WHERE s.supersedes_id = items.id)`
+  is part of the WHERE clause. Before, intermediate supersede rows
+  leaked into the listing, letting users copy a stale ID into a new
+  supersede call and silently break the head-identity contract.
+- **`core.items.create_item` / `list_items` resolve `work_unit_id`
+  prefixes** — passing the CLI's displayed 8-char prefix as
+  `--wu <prefix>` previously raised an `ForeignKeyViolation` traceback
+  on insert (and silently returned no rows on the filter path). The
+  core helper now resolves the prefix or raises a clean `NotFoundError`.
+  Affects MCP `luplo_item_upsert(work_unit_id=...)` for free.
+
+### Internal
+
+- **`Backend` Protocol gains** `create_glossary_group_with_canonical`,
+  `add_term_to_group`, and `delete_glossary_term` so future backends
+  inherit the contract; the existing `RemoteBackend` does not yet
+  implement glossary at all (unchanged from 0.7.x).
+- **`_resolve_group` / `_resolve_term`** in `core.glossary` are the
+  single point that combines `resolve_uuid_prefix` with an
+  existence-check for full UUIDs. Used everywhere glossary IDs cross
+  a function boundary.
+
 ## [0.7.1] - 2026-04-21
 
 ### Added
@@ -257,7 +330,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/luplo-io/luplo/releases/tag/v0.8.0
 [0.7.1]: https://github.com/luplo-io/luplo/releases/tag/v0.7.1
 [0.7.0]: https://github.com/luplo-io/luplo/releases/tag/v0.7.0
 [0.6.2]: https://github.com/luplo-io/luplo/releases/tag/v0.6.2
