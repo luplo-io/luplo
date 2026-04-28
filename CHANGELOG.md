@@ -11,6 +11,30 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-04-28
+
+Bug-fix follow-up to 0.11.0 after a real-world report from the
+hearthward project where every search hit's id rendered as an unusable
+truncated tag like `[cj-knowl]`.
+
+### Fixed
+
+- **Search and brief now show the full item id, not a truncated prefix.**
+  0.11.0 changed the format to `(id: <12-char-prefix>)` on the assumption
+  that all ids were 36-char UUIDs. The page_sync pipeline (and any other
+  importer that derives ids from `source_page_id + stable_section_key`)
+  produces deterministic non-UUID slug ids — truncating those at 12 chars
+  collapses the slug to the leading taxonomy prefix (`cj-knowledge`) and
+  loses everything that disambiguates the row. Full id is now printed
+  verbatim in `luplo_item_search` and `luplo_brief` output.
+- **`luplo_item_show` (and the underlying `resolve_uuid_prefix`) now
+  accepts non-UUID ids by exact-string match.** The legacy resolver only
+  understood canonical UUIDs and hex prefixes, so any slug id raised
+  `InvalidIdFormatError` and was unaddressable through the public API.
+  The resolver now does an exact `id = %s` lookup before falling through
+  to the hex-prefix path; UUIDs and hex prefixes still take their
+  existing fast paths so behaviour is unchanged for them.
+
 ## [0.11.0] - 2026-04-28
 
 A search-and-discovery release. Adds a raw-`tsquery` escape hatch for
@@ -423,7 +447,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/luplo-io/luplo/releases/tag/v0.11.1
 [0.11.0]: https://github.com/luplo-io/luplo/releases/tag/v0.11.0
 [0.10.0]: https://github.com/luplo-io/luplo/releases/tag/v0.10.0
 [0.9.0]: https://github.com/luplo-io/luplo/releases/tag/v0.9.0
