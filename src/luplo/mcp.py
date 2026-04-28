@@ -1148,6 +1148,61 @@ async def luplo_import_begin(
     return dict(result.refusal)
 
 
+@mcp.tool()
+async def luplo_import_finalize(
+    bundle_id: str,
+    items: list[dict[str, Any]],
+    project_id: str,
+    close_work_unit: bool = False,
+    actor_id: str = "claude",
+) -> dict[str, Any]:
+    """Commit agent-extracted items into the staged import bundle.
+
+    *items* must be a list of objects matching the ``ResultItem`` shape:
+    ``{item_type, title, body, status, evidence_paths, [rationale],
+    [tags], [system_ids], [source_url]}``.
+
+    Validation aborts the entire commit on protocol violations
+    (no fenced code blocks; ``status=done|partial`` requires
+    ``evidence_paths``; ``item_type`` ∈ {``decision``, ``knowledge``,
+    ``document``}). Defense-in-depth strips fenced code blocks even when
+    the agent followed the rule and surfaces them as warnings.
+
+    Args:
+        bundle_id: Work-unit id returned by ``luplo_import_begin``.
+        items: List of result-item dicts to persist as luplo items.
+        project_id: Project owning the bundle. A cross-project guard
+            rejects mismatches.
+        close_work_unit: When True, transition the bundle's work unit
+            to ``done`` after items are written.
+        actor_id: UUID of the actor finalising. The literal ``"claude"``
+            resolves to the configured ``.luplo`` actor.
+
+    Returns:
+        Summary dict with ``status``, ``bundle_id``, ``items_created``,
+        and a (possibly empty) list of ``warnings``.
+    """
+    from luplo.core.import_pipeline.finalize import finalize_import
+    from luplo.core.import_pipeline.results import ImportResults
+
+    aid = _resolve_actor(actor_id)
+    parsed = ImportResults.model_validate(
+        {
+            "bundle_id": bundle_id,
+            "items": items,
+            "close_work_unit": close_work_unit,
+        }
+    )
+
+    b = await _get_backend()
+    return await finalize_import(
+        backend=b,
+        project_id=project_id,
+        actor_id=aid,
+        results=parsed,
+    )
+
+
 # ── Entrypoint ───────────────────────────────────────────────────
 
 

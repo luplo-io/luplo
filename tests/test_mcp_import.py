@@ -17,7 +17,7 @@ import pytest
 
 import luplo.mcp as mcp_mod
 from luplo.config import LuploConfig
-from luplo.mcp import luplo_import_begin
+from luplo.mcp import luplo_import_begin, luplo_import_finalize
 
 FIXTURES = Path(__file__).parent / "fixtures" / "import"
 
@@ -120,3 +120,37 @@ async def test_luplo_import_begin_duplicate_returns_refusal(
     assert second["status"] == "refused"
     assert "force=true" in second["override"]
     assert "Ask the user" in second["agent_hint"]
+
+
+@pytest.mark.asyncio
+async def test_luplo_import_finalize_creates_items(
+    fresh_project: _FreshProject,
+    fresh_actor: str,
+) -> None:
+    begin_res = await luplo_import_begin(
+        project_id=fresh_project.id,
+        from_spec=str(FIXTURES / "spec-only" / "spec.md"),
+        from_plan=None,
+        dest_lang=None,
+        force=False,
+        repo_root=str(Path.cwd()),
+        actor_id=fresh_actor,
+    )
+
+    summary = await luplo_import_finalize(
+        bundle_id=begin_res["bundle_id"],
+        items=[
+            {
+                "item_type": "knowledge",
+                "title": "k1",
+                "body": "b1",
+                "status": "done",
+                "evidence_paths": ["src/x.py:1"],
+            }
+        ],
+        project_id=fresh_project.id,
+        close_work_unit=False,
+        actor_id=fresh_actor,
+    )
+    assert summary["status"] == "ok"
+    assert summary["items_created"] == 1
