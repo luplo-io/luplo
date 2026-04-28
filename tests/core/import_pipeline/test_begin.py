@@ -123,6 +123,68 @@ async def test_begin_force_archives_old_creates_new(
 
 
 @pytest.mark.asyncio
+async def test_begin_dest_lang_none_emits_notice(
+    local_backend: LocalBackend,
+    fresh_project: _FreshProject,
+    fresh_actor: str,
+) -> None:
+    spec = FIXTURES / "spec-only" / "spec.md"
+
+    result = await begin_import(
+        backend=local_backend,
+        project_id=fresh_project.id,
+        actor_id=fresh_actor,
+        spec_path=spec,
+        plan_path=None,
+        dest_lang=None,
+        repo_root=Path("/abs/repo"),
+        force=False,
+    )
+
+    assert result.kind == "manifest"
+    assert result.manifest is not None
+    assert any("dest_lang is null" in n for n in result.manifest.protocol.notices)
+
+
+@pytest.mark.asyncio
+async def test_begin_dest_lang_mismatch_refusal(
+    local_backend: LocalBackend,
+    fresh_project: _FreshProject,
+    fresh_actor: str,
+) -> None:
+    spec = FIXTURES / "spec-only" / "spec.md"
+
+    first = await begin_import(
+        backend=local_backend,
+        project_id=fresh_project.id,
+        actor_id=fresh_actor,
+        spec_path=spec,
+        plan_path=None,
+        dest_lang="ko",
+        repo_root=Path("/abs/repo"),
+        force=False,
+    )
+    assert first.kind == "manifest"
+
+    second = await begin_import(
+        backend=local_backend,
+        project_id=fresh_project.id,
+        actor_id=fresh_actor,
+        spec_path=spec,
+        plan_path=None,
+        dest_lang="en",
+        repo_root=Path("/abs/repo"),
+        force=False,
+    )
+    assert second.kind == "refusal"
+    assert second.refusal is not None
+    why = second.refusal["why"]
+    assert "dest_lang" in why
+    assert "'ko'" in why
+    assert "'en'" in why
+
+
+@pytest.mark.asyncio
 async def test_begin_no_sources_raises(
     local_backend: LocalBackend,
     fresh_project: _FreshProject,

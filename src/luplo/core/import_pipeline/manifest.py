@@ -35,6 +35,7 @@ class ProtocolBlock(BaseModel):
 
     rules: list[str] = Field(default_factory=list)
     verification: dict[str, Any] = Field(default_factory=dict)
+    notices: list[str] = Field(default_factory=list)
 
 
 class ImportManifest(BaseModel):

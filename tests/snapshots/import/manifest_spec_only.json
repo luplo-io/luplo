@@ -26,6 +26,7 @@
       "search_strategy": "fan-out per candidate, scan paths inferred from candidate text and spec/plan refs",
       "evidence_format": "list of relative paths or 'path:line-range' strings",
       "subagent_recommendation": "use Haiku-class small model in parallel for code verification"
-    }
+    },
+    "notices": []
   }
 }

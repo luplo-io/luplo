@@ -110,7 +110,8 @@ async def begin_import(
     existing = await backend.find_existing_import_wu(project_id=project_id, source_paths=paths)
 
     if existing is not None and not force:
-        # 3-layer refusal — distinguish "exact rerun" vs "content changed"
+        # 3-layer refusal — distinguish "exact rerun" vs "language mismatch"
+        # vs "content changed".
         prior_hashes: dict[str, str] = existing.context.get("content_hashes", {})
         current_hashes: dict[str, str] = {}
         if spec_src is not None:
@@ -118,11 +119,21 @@ async def begin_import(
         if plan_src is not None:
             current_hashes[plan_src.path] = plan_src.content_hash
 
-        if prior_hashes == current_hashes:
+        prior_lang = existing.context.get("dest_lang")
+
+        if prior_hashes == current_hashes and prior_lang == dest_lang:
             why = (
                 f"spec/plan pair already imported as work_unit {existing.id} "
                 f"(created at {existing.created_at.isoformat()}). "
                 "Content is byte-identical to the prior import."
+            )
+        elif prior_hashes == current_hashes:
+            why = (
+                f"spec/plan pair already imported as work_unit {existing.id} "
+                f"with dest_lang={prior_lang!r}, "
+                f"but the current call requests dest_lang={dest_lang!r}. "
+                "Content is byte-identical; only the target language differs. "
+                "Forcing will archive the prior bundle and re-extract items in the new language."
             )
         else:
             why = (
@@ -172,12 +183,21 @@ async def begin_import(
         context=context,
     )
 
+    notices: list[str] = []
+    if dest_lang is None:
+        notices.append(
+            "dest_lang is null — items will be stored verbatim in their source language. "
+            "To translate, pass --dest-lang (CLI) or dest_lang= (MCP)."
+        )
+
     manifest = ImportManifest(
         bundle_id=new_wu_id,
         dest_lang=dest_lang,
         repo_root=str(Path(repo_root).resolve()),
         sources=ManifestSources(spec=spec_src, plan=plan_src),
-        protocol=ProtocolBlock(rules=_PROTOCOL_RULES, verification=_VERIFICATION),
+        protocol=ProtocolBlock(
+            rules=_PROTOCOL_RULES, verification=_VERIFICATION, notices=notices
+        ),
     )
     return BeginResult(kind="manifest", manifest=manifest)
 
