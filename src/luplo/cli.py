@@ -67,6 +67,7 @@ glossary_group_app = typer.Typer(name="group", help="Manage glossary groups.")
 glossary_term_app = typer.Typer(name="term", help="Manage glossary terms.")
 task_app = typer.Typer(name="task", help="Manage tasks (item_type='task').")
 qa_app = typer.Typer(name="qa", help="Manage QA checks (item_type='qa_check').")
+import_app = typer.Typer(name="import", help="Import spec/plan markdown into a luplo work_unit.")
 
 app.add_typer(items_app)
 app.add_typer(work_app)
@@ -76,6 +77,7 @@ glossary_app.add_typer(glossary_group_app)
 glossary_app.add_typer(glossary_term_app)
 app.add_typer(task_app)
 app.add_typer(qa_app)
+app.add_typer(import_app)
 
 
 # ── Config helpers ───────────────────────────────────────────────
@@ -138,11 +140,6 @@ def _cfg_language(flag: str | None = None) -> str | None:
     if isinstance(value, str):
         return value
     return None
-
-
-# Re-exported alias so static analysis sees the helper as used until
-# Task 14 wires it into the ``lp import`` command.
-cfg_language = _cfg_language
 
 
 # ── Backend lifecycle ────────────────────────────────────────────
@@ -1487,6 +1484,86 @@ def qa_assign(
         async with _backend() as b:
             q = await b.assign_qa(qa_id, actor_id=aid, assignee_actor_id=assignee, project_id=pid)
             _print_qa(q)
+
+    _run(_do())
+
+
+# ── Import (spec/plan → work_unit) ───────────────────────────────
+
+
+@import_app.command("begin")
+def import_begin(
+    from_spec: Path | None = typer.Option(
+        None, "--from-spec", help="Path to a spec markdown file."
+    ),
+    from_plan: Path | None = typer.Option(
+        None, "--from-plan", help="Path to a plan markdown file."
+    ),
+    dest_lang: str | None = typer.Option(
+        None,
+        "--dest-lang",
+        help="Target language (ISO 639-1). Overrides .luplo [project].language.",
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Replace any prior import of the same source set."
+    ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Stage a new import bundle and emit its manifest as JSON.
+
+    Opens a fresh ``import``-typed work unit, reads the spec/plan source
+    files, and prints the resulting ``ImportManifest`` to stdout. The
+    manifest is the contract the calling agent consumes to extract
+    decision / knowledge / document items.
+
+    Args:
+        from_spec: Optional path to a spec markdown file.
+        from_plan: Optional path to a plan markdown file. At least one of
+            ``from_spec`` or ``from_plan`` must be provided.
+        dest_lang: ISO 639-1 target language. Overrides
+            ``[project].language`` from ``.luplo``. ``None`` preserves the
+            source language.
+        force: When True, archive any prior import work unit covering the
+            same source set and stage a new one in its place.
+        project: Project ID override (defaults to ``.luplo``/env).
+        actor: Actor UUID override (defaults to ``.luplo``/env).
+
+    Raises:
+        typer.Exit: Code ``1`` when no source files are provided. Code ``2``
+            when a duplicate import exists and ``force`` is not set.
+    """
+    if from_spec is None and from_plan is None:
+        typer.echo("Error: at least one of --from-spec or --from-plan is required.", err=True)
+        raise typer.Exit(code=1)
+
+    pid = _cfg_project(project)
+    aid = _cfg_actor(actor)
+    lang = _cfg_language(dest_lang)
+    repo_root = Path.cwd()
+
+    from luplo.core.import_pipeline.begin import begin_import
+    from luplo.core.import_pipeline.refusal import render_refusal_text
+
+    async def _do() -> None:
+        async with _backend() as b:
+            result = await begin_import(
+                backend=b,
+                project_id=pid,
+                actor_id=aid,
+                spec_path=from_spec,
+                plan_path=from_plan,
+                dest_lang=lang,
+                repo_root=repo_root,
+                force=force,
+            )
+            if result.kind == "manifest":
+                assert result.manifest is not None
+                typer.echo(result.manifest.model_dump_json(indent=2))
+            else:
+                assert result.refusal is not None
+                typer.echo(render_refusal_text(result.refusal), err=True)
+                raise typer.Exit(code=2)
 
     _run(_do())
 
