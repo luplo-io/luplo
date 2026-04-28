@@ -6,5 +6,6 @@ storage protocol: schemas, refusal helpers, and the begin/finalize phases.
 """
 
 from luplo.core.import_pipeline.manifest import ImportManifest
+from luplo.core.import_pipeline.results import ImportResults
 
-__all__ = ["ImportManifest"]
+__all__ = ["ImportManifest", "ImportResults"]
