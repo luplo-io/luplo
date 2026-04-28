@@ -11,6 +11,38 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-28
+
+A "drop the dead path" release. The bundled FastAPI HTTP server is
+removed — it had been frozen since v0.7.0 and never caught up to the
+qa / tasks / page_sync surface. Self-host now means "lp + your own
+Postgres" (LocalBackend, the default mode); for team or hosted use,
+install [luplo-cloud](https://pypi.org/project/luplo-cloud/) which
+points lp's RemoteBackend at the managed multi-tenant API.
+
+### Removed
+
+- **`src/luplo/server/`** (was the optional `[project.optional-dependencies]
+  server = […]` extra). Routes, `LuploServerSettings`, `luplo-server.toml`
+  loader, route handlers (`/projects`, `/items`, `/work-units`,
+  `/search`, `/checks`), and the corresponding test suite are gone.
+  - `RemoteBackend` (`luplo.core.backend.remote`) **stays** — it's still
+    the path lp uses to talk to *any* compatible HTTP server, including
+    luplo-cloud's managed API.
+  - The `server` optional-dependency group (`fastapi`, `uvicorn`,
+    `pydantic-settings`) is removed. Existing installs that depended on
+    `luplo[server]` should pin `luplo<0.10` or migrate to luplo-cloud.
+
+### Migration
+
+- **Self-host operators**: switch to local mode (`backend.type = "local"`
+  in `.luplo`, with `LUPLO_DB_URL` pointing at your Postgres). This is
+  the same code path you were using inside `luplo serve` — no data
+  layout change.
+- **Anyone wanting multi-tenant or OAuth**: install `luplo-cloud` and
+  use the hosted cloud (or run your own copy of luplo-saas if you want
+  to fork that — its server has auth + multi-tenancy).
+
 ## [0.9.0] - 2026-04-28
 
 A "remote becomes real" release. `lp mcp` now has a working remote backend
@@ -353,7 +385,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/luplo-io/luplo/releases/tag/v0.10.0
 [0.9.0]: https://github.com/luplo-io/luplo/releases/tag/v0.9.0
 [0.8.0]: https://github.com/luplo-io/luplo/releases/tag/v0.8.0
 [0.7.1]: https://github.com/luplo-io/luplo/releases/tag/v0.7.1

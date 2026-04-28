@@ -111,9 +111,10 @@ for details.
 ## Architecture
 
 PostgreSQL (tsquery + glossary expansion + pgvector reranking), typed
-edges (`depends` / `blocks` / `supersedes` / `conflicts`), and three
-interfaces sharing one core: `lp` CLI, MCP server on stdio, and a
-FastAPI HTTP server.
+edges (`depends` / `blocks` / `supersedes` / `conflicts`), and two
+interfaces sharing one core: `lp` CLI and an MCP server on stdio.
+For team / cloud deployments use [luplo-cloud](https://pypi.org/project/luplo-cloud/),
+which bundles `lp` and connects it to the hosted multi-tenant API.
 
 ## Documentation
 
@@ -122,7 +123,7 @@ Full docs at **[luplo.readthedocs.io](https://luplo.readthedocs.io/)**:
 - [Concepts](https://luplo.readthedocs.io/en/latest/concepts/) —
   philosophy, positioning, architecture, data model, search pipeline.
 - [Guides](https://luplo.readthedocs.io/en/latest/guides/) —
-  work units, tasks & QA, MCP clients, Remote server, worker.
+  work units, tasks & QA, MCP clients, worker.
 - [Reference](https://luplo.readthedocs.io/en/latest/reference/) —
   CLI, MCP tools, configuration, semantic impact categories.
 - [Roadmap](https://luplo.readthedocs.io/en/latest/project/roadmap.html) —

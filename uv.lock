@@ -354,22 +354,6 @@ nvtx = [
 ]
 
 [[package]]
-name = "fastapi"
-version = "0.135.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "annotated-doc" },
-    { name = "pydantic" },
-    { name = "starlette" },
-    { name = "typing-extensions" },
-    { name = "typing-inspection" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/e6/7adb4c5fa231e82c35b8f5741a9f2d055f520c29af5546fd70d3e8e1cd2e/fastapi-0.135.3.tar.gz", hash = "sha256:bd6d7caf1a2bdd8d676843cdcd2287729572a1ef524fc4d65c17ae002a1be654", size = 396524, upload-time = "2026-04-01T16:23:58.188Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/a4/5caa2de7f917a04ada20018eccf60d6cc6145b0199d55ca3711b0fc08312/fastapi-0.135.3-py3-none-any.whl", hash = "sha256:9b0f590c813acd13d0ab43dd8494138eb58e484bfac405db1f3187cfc5810d98", size = 117734, upload-time = "2026-04-01T16:23:59.328Z" },
-]
-
-[[package]]
 name = "filelock"
 version = "3.25.2"
 source = { registry = "https://pypi.org/simple" }
@@ -600,7 +584,7 @@ wheels = [
 
 [[package]]
 name = "luplo"
-version = "0.8.0"
+version = "0.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -622,11 +606,6 @@ dev = [
     { name = "ruff" },
     { name = "types-jsonschema" },
 ]
-server = [
-    { name = "fastapi" },
-    { name = "pydantic-settings" },
-    { name = "uvicorn" },
-]
 vector-local = [
     { name = "pgvector" },
     { name = "sentence-transformers" },
@@ -635,14 +614,12 @@ vector-local = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.15" },
-    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "mcp", specifier = ">=1.0" },
     { name = "pgvector", marker = "extra == 'vector-local'", specifier = ">=0.3" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "psycopg-pool", specifier = ">=3.2" },
-    { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.6" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
@@ -652,9 +629,8 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "typer", specifier = ">=0.15" },
     { name = "types-jsonschema", marker = "extra == 'dev'", specifier = ">=4.23" },
-    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.34" },
 ]
-provides-extras = ["server", "vector-local", "dev"]
+provides-extras = ["vector-local", "dev"]
 
 [[package]]
 name = "mako"
