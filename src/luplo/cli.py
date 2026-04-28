@@ -340,7 +340,7 @@ def items_add(
         None,
         "--wu",
         "-w",
-        help="Attach this item to a work unit (full UUID).",
+        help="Attach this item to a work unit (full UUID or 8+ char hex prefix).",
     ),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
@@ -407,7 +407,7 @@ def items_list(
         None,
         "--wu",
         "-w",
-        help="Filter to items attached to this work unit (full UUID).",
+        help="Filter to items attached to this work unit (full UUID or 8+ char hex prefix).",
     ),
     limit: int = typer.Option(20, "--limit", "-n"),
 ) -> None:

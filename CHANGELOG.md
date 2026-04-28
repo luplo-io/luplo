@@ -133,10 +133,10 @@ HTTP server) instead of only a local Postgres.
 
 ### Added
 
-- **Remote-mode MCP server** — `lp mcp` now reads `[backend] type = "remote"`
-  + `server_url` from `.luplo` and routes tool calls through the configured
-  HTTP server instead of dialing local Postgres. Local mode is unchanged
-  and remains the default.
+- **Remote-mode MCP server** — the MCP entrypoint (`python -m luplo.mcp`)
+  now reads `[backend] type = "remote"` + `server_url` from `.luplo` and
+  routes tool calls through the configured HTTP server instead of dialing
+  local Postgres. Local mode is unchanged and remains the default.
 - **Two-source token resolution for remote mode** —
   `LUPLO_CLOUD_API_KEY` env var (long-lived `lupk_…` API keys, the path for
   servers / CI / IaC) wins, falling back to the OS keyring entry written by
@@ -467,7 +467,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/luplo-io/luplo/releases/tag/v0.12.0
 [0.11.1]: https://github.com/luplo-io/luplo/releases/tag/v0.11.1
 [0.11.0]: https://github.com/luplo-io/luplo/releases/tag/v0.11.0
 [0.10.0]: https://github.com/luplo-io/luplo/releases/tag/v0.10.0
