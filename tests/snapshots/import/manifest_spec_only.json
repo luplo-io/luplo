@@ -1,0 +1,31 @@
+{
+  "bundle_id": "<volatile>",
+  "dest_lang": "ko",
+  "repo_root": "<volatile>",
+  "sources": {
+    "spec": {
+      "path": "/Users/ryan/PycharmProjects/luplo/tests/fixtures/import/spec-only/spec.md",
+      "content_hash": "9b734d9932fd1f4d83d2cd097e23902fc198347b979c4ed29e3860deaa2e900c",
+      "raw_markdown": "# Spec: solo\n\nA spec without a plan companion.\n"
+    },
+    "plan": null
+  },
+  "protocol": {
+    "rules": [
+      "Chunk meaningfully — decisions/knowledge granularity, not per-checkbox.",
+      "No fenced code blocks in item body; replace with [code: see source_url, lines N-M] placeholder.",
+      "Rejected proposals with known rationale → standalone decision items titled 'Rejected: <proposal>'.",
+      "Rejected proposals without rationale → annotate the related item, do not create a separate one.",
+      "If dest_lang is set, translate titles and bodies to dest_lang regardless of source language; identifiers (paths, symbols) literal.",
+      "If dest_lang is null, preserve each item's source language verbatim.",
+      "Verify each item's status against repo at repo_root: done | partial | notdone | rejected.",
+      "Document items: full body (translated per dest_lang), code blocks stripped, source_url set to the original markdown path.",
+      "Glossary candidates and luplo task entities are NOT created by this pipeline."
+    ],
+    "verification": {
+      "search_strategy": "fan-out per candidate, scan paths inferred from candidate text and spec/plan refs",
+      "evidence_format": "list of relative paths or 'path:line-range' strings",
+      "subagent_recommendation": "use Haiku-class small model in parallel for code verification"
+    }
+  }
+}

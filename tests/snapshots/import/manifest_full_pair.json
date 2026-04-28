@@ -1,0 +1,35 @@
+{
+  "bundle_id": "<volatile>",
+  "dest_lang": "ko",
+  "repo_root": "<volatile>",
+  "sources": {
+    "spec": {
+      "path": "/Users/ryan/PycharmProjects/luplo/tests/fixtures/import/full-pair/spec.md",
+      "content_hash": "7baf2431e653b5ec5484d8b11f95c83e01feaa87b1e392a289963e81671e5de4",
+      "raw_markdown": "# Spec: example feature\n\nThis is a fixture spec used by the lp import test suite.\n\n## Goal\nAdd a hello-world endpoint.\n\n## Decisions\n- Use FastAPI\n- Endpoint at `/hello`\n"
+    },
+    "plan": {
+      "path": "/Users/ryan/PycharmProjects/luplo/tests/fixtures/import/full-pair/plan.md",
+      "content_hash": "da4650f40eb55cc2c221f91f12be6cc05810445e4d8f2acfe41d97bd74728a19",
+      "raw_markdown": "# Plan: example feature\n\n- [x] Step 1: Write failing test for /hello\n- [x] Step 2: Implement /hello in src/api.py\n- [ ] Step 3: Document in README (deferred)\n"
+    }
+  },
+  "protocol": {
+    "rules": [
+      "Chunk meaningfully — decisions/knowledge granularity, not per-checkbox.",
+      "No fenced code blocks in item body; replace with [code: see source_url, lines N-M] placeholder.",
+      "Rejected proposals with known rationale → standalone decision items titled 'Rejected: <proposal>'.",
+      "Rejected proposals without rationale → annotate the related item, do not create a separate one.",
+      "If dest_lang is set, translate titles and bodies to dest_lang regardless of source language; identifiers (paths, symbols) literal.",
+      "If dest_lang is null, preserve each item's source language verbatim.",
+      "Verify each item's status against repo at repo_root: done | partial | notdone | rejected.",
+      "Document items: full body (translated per dest_lang), code blocks stripped, source_url set to the original markdown path.",
+      "Glossary candidates and luplo task entities are NOT created by this pipeline."
+    ],
+    "verification": {
+      "search_strategy": "fan-out per candidate, scan paths inferred from candidate text and spec/plan refs",
+      "evidence_format": "list of relative paths or 'path:line-range' strings",
+      "subagent_recommendation": "use Haiku-class small model in parallel for code verification"
+    }
+  }
+}
