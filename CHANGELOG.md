@@ -11,6 +11,8 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-04-29
+
 ### Added
 - `lp import begin / finalize` CLI commands plus `luplo_import_begin / luplo_import_finalize` MCP tools — ingest spec/plan markdown pairs into a luplo work_unit with code-grounded status verification (extraction and verification handled by the calling agent's subagents; luplo itself holds zero LLM dependencies).
 - `.luplo [project].language` optional key for dest-lang default.
