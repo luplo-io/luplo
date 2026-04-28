@@ -196,6 +196,10 @@ async def test_mcp_item_upsert_and_search(mcp_backend: Any) -> None:
 
     results = await mcp_mod.luplo_item_search(query="vendor", project_id=_MCP_PROJECT, limit=5)
     assert "MCP vendor rule" in results
+    # Search output must expose the item id explicitly so the LLM can chain
+    # into luplo_item_show without guessing how to address the result.
+    assert "(id: " in results
+    assert "luplo_item_show" in results
 
 
 @pytest.mark.asyncio(loop_scope="module")

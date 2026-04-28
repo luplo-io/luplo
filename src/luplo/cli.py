@@ -13,6 +13,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -24,11 +25,37 @@ from luplo.core.db import close_pool, create_pool
 from luplo.core.impact import ImpactNode, ImpactResult
 from luplo.core.models import Item, ItemCreate
 
+
+def _version_callback(show: bool) -> None:
+    if not show:
+        return
+    try:
+        v = version("luplo")
+    except PackageNotFoundError:
+        v = "unknown"
+    typer.echo(f"luplo {v}")
+    raise typer.Exit()
+
+
 app = typer.Typer(
     name="lp",
     help="luplo — long-term memory for engineering decisions.",
     no_args_is_help=True,
 )
+
+
+@app.callback()
+def _root(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-v",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show luplo version and exit.",
+    ),
+) -> None:
+    """luplo — long-term memory for engineering decisions."""
 
 items_app = typer.Typer(name="items", help="Manage items (decisions, knowledge, policies).")
 work_app = typer.Typer(name="work", help="Manage work units.")

@@ -303,3 +303,39 @@ async def test_search_with_null_embedding(
         embedding_backend=NullEmbedding(),  # type: ignore[arg-type]
     )
     assert len(results) >= 1
+
+
+@pytest.mark.asyncio
+async def test_search_raw_tsquery_bypasses_parser_and_glossary(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """`tsquery=` is the LLM/advanced escape hatch.
+
+    Passing a raw ``to_tsquery`` expression must:
+    - hit Postgres directly (operators honoured)
+    - skip the simple-dialect parser (so ``&`` works as AND, not as a
+      literal token char dropped by the parser)
+    - skip glossary expansion (caller owns synonym coverage)
+    """
+    await _seed_items(conn, seed_project, seed_actor)
+
+    # `&` is a tsquery AND operator — the simple parser would treat it as
+    # a literal character. Both terms exist on the same item ("Vendor
+    # restocking" body mentions vendors restocking at dawn) so the AND
+    # match must succeed.
+    results = await search(
+        conn,
+        "ignored when tsquery is set",  # type: ignore[arg-type]
+        seed_project,
+        tsquery="vendor & restock",  # type: ignore[arg-type]
+    )
+    assert len(results) >= 1
+    assert any("restock" in r.item.title.lower() or "restock" in (r.item.body or "").lower()
+               for r in results)
+
+
+@pytest.mark.asyncio
+async def test_search_empty_tsquery(conn: object, seed_project: str) -> None:
+    """Empty tsquery short-circuits to no results, same as empty query."""
+    results = await search(conn, "anything", seed_project, tsquery="")  # type: ignore[arg-type]
+    assert results == []

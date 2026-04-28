@@ -416,8 +416,14 @@ class Backend(Protocol):
         item_types: list[str] | None = None,
         system_ids: list[str] | None = None,
         limit: int = 10,
+        tsquery: str | None = None,
     ) -> list[SearchResult]:
-        """Full pipeline: glossary expand → tsquery → vector rerank."""
+        """Full pipeline: glossary expand → tsquery → vector rerank.
+
+        When *tsquery* is set, the simple-dialect parser and glossary
+        expansion are bypassed; the string is passed straight to PostgreSQL
+        ``to_tsquery``. Caller owns synonym coverage and syntax validity.
+        """
         ...
 
     # ── Glossary ─────────────────────────────────────────────────

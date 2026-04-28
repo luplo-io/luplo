@@ -33,6 +33,7 @@ async def search(
     item_types: list[str] | None = None,
     system_ids: list[str] | None = None,
     limit: int = 10,
+    tsquery: str | None = None,
 ) -> list[SearchResult]:
     """Run the full search pipeline.
 
@@ -45,36 +46,51 @@ async def search(
 
     Args:
         conn: Async psycopg connection.
-        query: Raw user query string.
+        query: Raw user query string (simple-dialect: word, "phrase", OR,
+            -negation). Glossary expanded. Ignored when *tsquery* is set.
         project_id: Project scope.
         embedding_backend: Embedding backend for reranking (default null).
         item_types: Filter by item types (e.g. ``["decision", "knowledge"]``).
         system_ids: Filter by system membership.
         limit: Maximum results to return.
+        tsquery: Optional escape hatch — a raw PostgreSQL ``to_tsquery``
+            expression (e.g. ``"(inventory | 인벤토리) & slot & !deprecated"``).
+            When set, *query* and glossary expansion are bypassed and the
+            string is passed directly to ``to_tsquery('simple', …)``.
+            Caller is responsible for synonym coverage and valid syntax.
+            A malformed expression raises ``InvalidTsquery``.
 
     Returns:
         Ranked list of ``SearchResult`` objects.
     """
-    if not query.strip():
-        return []
+    if tsquery is not None:
+        ts = tsquery.strip()
+        if not ts:
+            return []
+        tsquery_str = ts
+        rerank_query = ts
+    else:
+        if not query.strip():
+            return []
 
-    clauses = parse_user_query(query)
-    if not clauses:
-        return []
+        clauses = parse_user_query(query)
+        if not clauses:
+            return []
 
-    expandable: list[str] = []
-    for clause in clauses:
-        if isinstance(clause, Term) and not clause.phrase and not clause.negated:
-            expandable.append(clause.text)
-        elif isinstance(clause, OrGroup):
-            for m in clause.members:
-                if not m.phrase and not m.negated:
-                    expandable.append(m.text)
+        expandable: list[str] = []
+        for clause in clauses:
+            if isinstance(clause, Term) and not clause.phrase and not clause.negated:
+                expandable.append(clause.text)
+            elif isinstance(clause, OrGroup):
+                for m in clause.members:
+                    if not m.phrase and not m.negated:
+                        expandable.append(m.text)
 
-    glossary_map = await fetch_glossary_map(conn, expandable, project_id)
-    tsquery_str = build_tsquery(clauses, glossary_map)
-    if not tsquery_str:
-        return []
+        glossary_map = await fetch_glossary_map(conn, expandable, project_id)
+        tsquery_str = build_tsquery(clauses, glossary_map)
+        rerank_query = query
+        if not tsquery_str:
+            return []
 
     fetch_limit = limit * 3  # over-fetch for reranking headroom
     candidates = await _tsquery_search(
@@ -94,7 +110,9 @@ async def search(
     )
 
     if use_vectors and embedding_backend is not None:
-        candidates = await _vector_rerank(conn, query, candidates, embedding_backend, limit)
+        candidates = await _vector_rerank(
+            conn, rerank_query, candidates, embedding_backend, limit
+        )
     else:
         candidates = candidates[:limit]
 

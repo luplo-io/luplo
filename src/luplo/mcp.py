@@ -407,18 +407,45 @@ async def luplo_item_search(
     item_types: list[str] | None = None,
     system_ids: list[str] | None = None,
     limit: int = 10,
+    tsquery: str | None = None,
 ) -> str:
     """Search items using glossary-expanded full-text search.
 
-    The query is automatically expanded using the project's glossary
-    (e.g. "vendor" may also match "shop", "NPC merchant").
+    Two modes:
+
+    1. **Simple** (``query=``) — small dialect designed for humans:
+       plain words AND together, ``"exact phrase"``, ``OR`` (uppercase),
+       ``-negation``. Glossary auto-expands required terms (e.g. "vendor"
+       also matches "shop", "NPC merchant"). No parentheses, no prefix,
+       no ``&|!`` operators — those are passed through as literal chars.
+    2. **Raw tsquery** (``tsquery=``) — escape hatch for callers (LLMs,
+       advanced users) that want PostgreSQL's full
+       `to_tsquery <https://www.postgresql.org/docs/current/textsearch-controls.html>`_
+       grammar: ``&`` (AND), ``|`` (OR), ``!`` (NOT), ``:*`` (prefix),
+       ``<->`` (phrase distance), parentheses for grouping. Glossary is
+       **not** applied — caller is responsible for synonym coverage.
+       Bad syntax raises an error.
+
+    Pick one — when ``tsquery`` is set, ``query`` is ignored.
+
+    Examples::
+
+        # Simple
+        query="inventory slot OR 인벤토리"
+        query="\\"InventoryWindow\\" -deprecated"
+
+        # Raw tsquery
+        tsquery="(inventory | 인벤토리) & slot & !deprecated"
+        tsquery="hearth:* & ward & decision"
 
     Args:
-        query: Search query string.
+        query: Simple-dialect search string. Used unless *tsquery* is set.
         project_id: Project scope.
         item_types: Filter by item types (e.g. ["decision"]).
         system_ids: Filter by systems.
         limit: Maximum results.
+        tsquery: Raw PostgreSQL ``to_tsquery`` expression. When set,
+            bypasses the simple parser and glossary expansion entirely.
     """
     b = await _get_backend()
     results = await b.search(
@@ -427,6 +454,7 @@ async def luplo_item_search(
         item_types=item_types,
         system_ids=system_ids,
         limit=limit,
+        tsquery=tsquery,
     )
 
     if not results:
@@ -435,11 +463,13 @@ async def luplo_item_search(
     lines = [f"Found {len(results)} result(s):"]
     for r in results:
         systems = f" [{', '.join(r.item.system_ids)}]" if r.item.system_ids else ""
-        lines.append(f"- [{r.item.id[:8]}] {r.item.title}{systems}")
+        lines.append(f"- {r.item.title} (id: {r.item.id[:12]}){systems}")
         if r.item.body:
             lines.append(f"  {r.item.body[:150]}")
         if r.item.rationale:
             lines.append(f"  Rationale: {r.item.rationale[:150]}")
+    lines.append("")
+    lines.append("Pass any `id` above to luplo_item_show for full body + rationale.")
     return "\n".join(lines)
 
 
@@ -647,9 +677,11 @@ async def luplo_brief(
 
     if items:
         for item in items:
-            lines.append(f"- [{item.item_type}] {item.title}")
+            lines.append(f"- [{item.item_type}] {item.title} (id: {item.id[:12]})")
             if item.rationale:
                 lines.append(f"  Rationale: {item.rationale[:100]}")
+        lines.append("")
+        lines.append("Pass any `id` above to luplo_item_show for full body + rationale.")
     else:
         lines.append("No items yet.")
 

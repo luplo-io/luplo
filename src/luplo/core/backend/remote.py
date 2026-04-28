@@ -154,6 +154,7 @@ class RemoteBackend:
         item_types: list[str] | None = None,
         system_ids: list[str] | None = None,
         limit: int = 10,
+        tsquery: str | None = None,
     ) -> list[SearchResult]:
         params: dict[str, Any] = {
             "q": query,
@@ -164,6 +165,8 @@ class RemoteBackend:
             params["item_types"] = item_types
         if system_ids:
             params["system_ids"] = system_ids
+        if tsquery is not None:
+            params["tsquery"] = tsquery
         resp = await self._client.get("/search", params=params)
         resp.raise_for_status()
         return [_parse_search_result(r) for r in resp.json()]

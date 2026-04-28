@@ -483,6 +483,7 @@ class LocalBackend:
         item_types: list[str] | None = None,
         system_ids: list[str] | None = None,
         limit: int = 10,
+        tsquery: str | None = None,
     ) -> list[SearchResult]:
         async with self.pool.connection() as conn:
             return await search_fn(
@@ -493,6 +494,7 @@ class LocalBackend:
                 item_types=item_types,
                 system_ids=system_ids,
                 limit=limit,
+                tsquery=tsquery,
             )
 
     # ── Glossary ─────────────────────────────────────────────────
