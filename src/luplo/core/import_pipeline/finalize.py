@@ -44,12 +44,13 @@ async def finalize_import(
         ValueError: When the bundle id is unknown, belongs to a different
             project, or is not in the ``in_progress`` state.
     """
-    wu = await backend.get_work_unit(results.bundle_id, project_id=project_id)
+    wu = await backend.get_work_unit(results.bundle_id)
     if wu is None:
-        raise ValueError(f"bundle_id {results.bundle_id!r} not found in project {project_id!r}")
+        raise ValueError(f"bundle_id {results.bundle_id!r} not found")
     if wu.project_id != project_id:
         raise ValueError(
-            f"bundle_id {results.bundle_id!r} belongs to a different project (cross-project guard)"
+            f"bundle_id {results.bundle_id!r} belongs to a different project "
+            "(cross-project guard)"
         )
     if wu.status != "in_progress":
         raise ValueError(
