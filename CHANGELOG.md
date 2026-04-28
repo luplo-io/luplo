@@ -13,9 +13,12 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [0.11.1] - 2026-04-28
 
-Bug-fix follow-up to 0.11.0 after a real-world report from the
-hearthward project where every search hit's id rendered as an unusable
-truncated tag like `[cj-knowl]`.
+Bug-fix follow-up to 0.11.0 for projects whose items have non-UUID ids
+(typically deterministic slugs produced by the `page_sync` pipeline).
+Two assumptions in 0.11.0 broke that data shape: search output
+truncated ids to a leading prefix that no longer disambiguated rows,
+and the id resolver rejected anything that wasn't a canonical UUID or
+hex prefix.
 
 ### Fixed
 
