@@ -203,6 +203,27 @@ class RemoteBackend:
         resp.raise_for_status()
         return _parse_work_unit(resp.json())
 
+    async def archive_work_unit(
+        self,
+        *,
+        id: str,
+        archived_by: str,
+        replaced_by_wu_id: str,
+    ) -> WorkUnit:
+        resp = await self._client.post(
+            f"/work-units/{id}/archive",
+            json={
+                "archived_by": archived_by,
+                "replaced_by_wu_id": replaced_by_wu_id,
+            },
+        )
+        if resp.status_code in (404, 405):
+            raise NotImplementedError(
+                "remote backend does not yet support archive — use local mode for force-import"
+            )
+        resp.raise_for_status()
+        return _parse_work_unit(resp.json())
+
     # ── History ──────────────────────────────────────────────────
 
     async def query_history(

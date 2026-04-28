@@ -289,6 +289,21 @@ class Backend(Protocol):
         """
         ...
 
+    async def archive_work_unit(
+        self,
+        *,
+        id: str,
+        archived_by: str,
+        replaced_by_wu_id: str,
+    ) -> WorkUnit:
+        """Mark a work unit as superseded by a force-import.
+
+        Sets status to 'archived', records the replacement wu_id in
+        context, and stamps closed_at/closed_by. Distinct from
+        close_work_unit (status='done') and from abandoned (user gave up).
+        """
+        ...
+
     # ── Systems ──────────────────────────────────────────────────
 
     async def create_system(

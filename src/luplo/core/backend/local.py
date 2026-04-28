@@ -229,6 +229,30 @@ class LocalBackend:
                 )
             return result
 
+    async def archive_work_unit(
+        self,
+        *,
+        id: str,
+        archived_by: str,
+        replaced_by_wu_id: str,
+    ) -> WorkUnit:
+        async with self.pool.connection() as conn:
+            wu = await work_units.archive_work_unit(
+                conn,
+                id,
+                archived_by=archived_by,
+                replaced_by_wu_id=replaced_by_wu_id,
+            )
+            await audit.record_audit(
+                conn,
+                actor_id=archived_by,
+                action="work_unit.archive",
+                target_type="work_unit",
+                target_id=id,
+                metadata={"replaced_by": replaced_by_wu_id},
+            )
+            return wu
+
     # ── Systems ──────────────────────────────────────────────────
 
     async def create_system(

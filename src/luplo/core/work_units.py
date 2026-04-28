@@ -220,6 +220,61 @@ async def find_work_units(
 # ── Close ────────────────────────────────────────────────────────
 
 
+async def archive_work_unit(
+    conn: AsyncConnection[Any],
+    wu_id: str,
+    *,
+    archived_by: str,
+    replaced_by_wu_id: str,
+) -> WorkUnit:
+    """Mark a work unit as superseded by a force-import.
+
+    Sets ``status='archived'``, stamps ``closed_at``/``closed_by``, and
+    merges ``{"replaced_by": replaced_by_wu_id}`` into the existing
+    ``context`` JSONB (pre-existing keys are preserved).
+
+    Distinct from :func:`close_work_unit` (``status='done'`` or
+    ``'abandoned'``): archive is the explicit "this work unit was
+    replaced by a fresh re-import" signal used by ``lp import --force``.
+
+    Args:
+        conn: Async psycopg connection.
+        wu_id: ID of the work unit being archived.
+        archived_by: Actor ID stamped into ``closed_by``.
+        replaced_by_wu_id: ID of the successor work unit, recorded in
+            ``context.replaced_by`` so consumers can follow the chain.
+
+    Returns:
+        The updated :class:`WorkUnit` with the merged context.
+
+    Raises:
+        ValueError: When no work unit matches ``wu_id``.
+    """
+    query = sql.SQL(
+        "UPDATE work_units"
+        " SET status = 'archived',"
+        "     closed_at = now(),"
+        "     closed_by = %(archived_by)s,"
+        "     context = context || %(replaced_by)s"
+        " WHERE id = %(id)s"
+        " RETURNING {returning}"
+    ).format(returning=_RETURNING)
+
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            query,
+            {
+                "id": wu_id,
+                "archived_by": archived_by,
+                "replaced_by": Jsonb({"replaced_by": replaced_by_wu_id}),
+            },
+        )
+        row = await cur.fetchone()
+        if row is None:
+            raise ValueError(f"work_unit not found: {wu_id}")
+        return _row_to_work_unit(row)
+
+
 async def close_work_unit(
     conn: AsyncConnection[Any],
     wu_id: str,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from luplo.core.work_units import (
+    archive_work_unit,
     close_work_unit,
     find_work_units,
     get_work_unit,
@@ -369,3 +370,81 @@ async def test_close_work_unit_not_found(conn: object, seed_actor: str) -> None:
         actor_id=seed_actor,  # type: ignore[arg-type]
     )
     assert result is None
+
+
+# ── archive_work_unit ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_archive_work_unit_sets_status_and_replaces_pointer(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """archive_work_unit marks status='archived' and stamps replaced_by in context.
+
+    Used by ``lp import --force`` to supersede a prior import bundle: the
+    new wu is opened, the prior one is archived with a pointer to the
+    successor.  Distinct from close_work_unit (status='done') and from
+    abandoned (user gave up).
+    """
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="To be archived",
+        created_by=seed_actor,
+    )
+
+    archived = await archive_work_unit(
+        conn,  # type: ignore[arg-type]
+        wu.id,
+        archived_by=seed_actor,
+        replaced_by_wu_id="wu-new",
+    )
+
+    assert archived is not None
+    assert archived.status == "archived"
+    assert archived.closed_at is not None
+    assert archived.closed_by == seed_actor
+    assert archived.context.get("replaced_by") == "wu-new"
+
+
+@pytest.mark.asyncio
+async def test_archive_work_unit_preserves_existing_context(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """Archiving merges replaced_by into context without dropping prior keys."""
+    payload = {
+        "source_paths": ["docs/concepts/lp-import.md"],
+        "imports": [{"path": "docs/concepts/lp-import.md", "hash": "deadbeef"}],
+    }
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="Archive with context",
+        created_by=seed_actor,
+        context=payload,
+    )
+
+    archived = await archive_work_unit(
+        conn,  # type: ignore[arg-type]
+        wu.id,
+        archived_by=seed_actor,
+        replaced_by_wu_id="wu-successor",
+    )
+
+    assert archived is not None
+    assert archived.context.get("replaced_by") == "wu-successor"
+    # Pre-existing keys must survive the JSONB merge.
+    assert archived.context.get("source_paths") == payload["source_paths"]
+    assert archived.context.get("imports") == payload["imports"]
+
+
+@pytest.mark.asyncio
+async def test_archive_work_unit_not_found(conn: object, seed_actor: str) -> None:
+    """Archiving a nonexistent wu raises ValueError."""
+    with pytest.raises(ValueError):
+        await archive_work_unit(
+            conn,  # type: ignore[arg-type]
+            "00000000-dead-4dea-8dea-000000000000",
+            archived_by=seed_actor,
+            replaced_by_wu_id="wu-new",
+        )
