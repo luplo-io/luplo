@@ -11,6 +11,18 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+### Added
+- `lp import begin / finalize` CLI commands plus `luplo_import_begin / luplo_import_finalize` MCP tools — ingest spec/plan markdown pairs into a luplo work_unit with code-grounded status verification (extraction and verification handled by the calling agent's subagents; luplo itself holds zero LLM dependencies).
+- `.luplo [project].language` optional key for dest-lang default.
+- `.claude/commands/lp-import.md` Claude Code slash command orchestrating the two-phase flow.
+- `docs/guides/lp-import.md` user guide.
+
+### Changed
+- `WorkUnit` gains a `context: dict` field (jsonb storage); `Backend.open_work_unit` accepts an optional `context` kwarg. Existing callers pass `None` / use the default factory.
+
+### Fixed
+- (none)
+
 ## [0.11.1] - 2026-04-28
 
 Bug-fix follow-up to 0.11.0 for projects whose items have non-UUID ids
