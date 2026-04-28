@@ -4,7 +4,7 @@
   "repo_root": "<volatile>",
   "sources": {
     "spec": {
-      "path": "/Users/ryan/PycharmProjects/luplo/tests/fixtures/import/spec-only/spec.md",
+      "path": "<fixtures>/spec-only/spec.md",
       "content_hash": "9b734d9932fd1f4d83d2cd097e23902fc198347b979c4ed29e3860deaa2e900c",
       "raw_markdown": "# Spec: solo\n\nA spec without a plan companion.\n"
     },

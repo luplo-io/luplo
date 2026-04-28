@@ -3,6 +3,7 @@
 If a snapshot mismatches, the contract has changed. That may be
 intentional — but a PR review should pass through this file deliberately.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,10 +18,21 @@ SNAPS = Path(__file__).parents[2] / "snapshots" / "import"
 
 
 def _normalise(manifest_dict: dict) -> dict:
-    """Strip volatile fields (bundle_id, repo_root) so snapshot is stable."""
+    """Strip machine-volatile fields so the snapshot is portable across checkouts.
+
+    Source ``path`` fields are replaced with a relative-to-repo marker because
+    fixtures live under absolute paths during the test run; ``bundle_id`` and
+    ``repo_root`` vary per invocation. ``content_hash`` is intentionally kept —
+    it pins the fixture content so any silent edit to the markdown trips the
+    snapshot.
+    """
     out = json.loads(json.dumps(manifest_dict))  # deep copy
     out["bundle_id"] = "<volatile>"
     out["repo_root"] = "<volatile>"
+    for key in ("spec", "plan"):
+        src = out.get("sources", {}).get(key)
+        if src is not None:
+            src["path"] = f"<fixtures>/{Path(src['path']).parent.name}/{Path(src['path']).name}"
     return out
 
 
@@ -34,8 +46,13 @@ def _normalise(manifest_dict: dict) -> dict:
 )
 @pytest.mark.asyncio
 async def test_manifest_snapshot(
-    case_dir, snapshot_file, has_spec, has_plan,
-    local_backend, fresh_project, fresh_actor,
+    case_dir,
+    snapshot_file,
+    has_spec,
+    has_plan,
+    local_backend,
+    fresh_project,
+    fresh_actor,
 ):
     case = FIXTURES / case_dir
     spec = case / "spec.md" if has_spec else None
@@ -58,8 +75,7 @@ async def test_manifest_snapshot(
         snap_path.parent.mkdir(parents=True, exist_ok=True)
         snap_path.write_text(json.dumps(actual, indent=2, ensure_ascii=False))
         pytest.fail(
-            f"Created baseline snapshot at {snap_path}. "
-            "Re-run the test to verify and commit."
+            f"Created baseline snapshot at {snap_path}. Re-run the test to verify and commit."
         )
 
     expected = json.loads(snap_path.read_text())

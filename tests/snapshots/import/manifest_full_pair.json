@@ -4,12 +4,12 @@
   "repo_root": "<volatile>",
   "sources": {
     "spec": {
-      "path": "/Users/ryan/PycharmProjects/luplo/tests/fixtures/import/full-pair/spec.md",
+      "path": "<fixtures>/full-pair/spec.md",
       "content_hash": "7baf2431e653b5ec5484d8b11f95c83e01feaa87b1e392a289963e81671e5de4",
       "raw_markdown": "# Spec: example feature\n\nThis is a fixture spec used by the lp import test suite.\n\n## Goal\nAdd a hello-world endpoint.\n\n## Decisions\n- Use FastAPI\n- Endpoint at `/hello`\n"
     },
     "plan": {
-      "path": "/Users/ryan/PycharmProjects/luplo/tests/fixtures/import/full-pair/plan.md",
+      "path": "<fixtures>/full-pair/plan.md",
       "content_hash": "da4650f40eb55cc2c221f91f12be6cc05810445e4d8f2acfe41d97bd74728a19",
       "raw_markdown": "# Plan: example feature\n\n- [x] Step 1: Write failing test for /hello\n- [x] Step 2: Implement /hello in src/api.py\n- [ ] Step 3: Document in README (deferred)\n"
     }

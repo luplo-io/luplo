@@ -5,7 +5,7 @@
   "sources": {
     "spec": null,
     "plan": {
-      "path": "/Users/ryan/PycharmProjects/luplo/tests/fixtures/import/plan-only/plan.md",
+      "path": "<fixtures>/plan-only/plan.md",
       "content_hash": "929a6bbcc81a9761c88fc95b0a4576cf7558612f9b39b5372b0e09f141f0e4c7",
       "raw_markdown": "# Plan: solo\n\n- [x] Single step: trivial change\n"
     }
