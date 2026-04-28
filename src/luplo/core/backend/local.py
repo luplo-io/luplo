@@ -253,6 +253,19 @@ class LocalBackend:
             )
             return wu
 
+    async def find_existing_import_wu(
+        self,
+        *,
+        project_id: str,
+        source_paths: tuple[str, ...],
+    ) -> WorkUnit | None:
+        async with self.pool.connection() as conn:
+            return await work_units.find_existing_import_wu(
+                conn,
+                project_id=project_id,
+                source_paths=source_paths,
+            )
+
     # ── Systems ──────────────────────────────────────────────────
 
     async def create_system(

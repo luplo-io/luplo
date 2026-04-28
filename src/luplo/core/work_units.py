@@ -217,6 +217,56 @@ async def find_work_units(
         return [_row_to_work_unit(row) for row in await cur.fetchall()]
 
 
+async def find_existing_import_wu(
+    conn: AsyncConnection[Any],
+    *,
+    project_id: str,
+    source_paths: tuple[str, ...],
+) -> WorkUnit | None:
+    """Find a non-archived import work unit whose source-path set matches.
+
+    Used by ``lp import begin`` for dedup. Matches when:
+
+    * ``project_id`` matches the work unit's project, AND
+    * ``status`` is not in ``('archived', 'abandoned')`` — done imports
+      still occupy that source-path-set, so a re-import without
+      ``--force`` should refuse, AND
+    * ``context->>'kind' = 'import'``, AND
+    * the sorted set of ``context.source_paths`` equals the sorted form
+      of the supplied ``source_paths`` (order-insensitive).
+
+    Args:
+        conn: Async psycopg connection.
+        project_id: Project scope for the lookup.
+        source_paths: Source paths captured by ``lp import begin``. The
+            tuple is sorted in Python before binding to PG so the SQL
+            comparison is order-insensitive.
+
+    Returns:
+        The most recently created matching ``WorkUnit``, or ``None`` when
+        no match exists.
+    """
+    sorted_paths = sorted(source_paths)
+
+    query = sql.SQL(
+        "SELECT {columns} FROM work_units"
+        " WHERE project_id = %(pid)s"
+        "   AND status NOT IN ('archived', 'abandoned')"
+        "   AND context->>'kind' = 'import'"
+        "   AND ("
+        "     SELECT array_agg(p ORDER BY p)"
+        "     FROM jsonb_array_elements_text(context->'source_paths') AS p"
+        "   ) = %(paths)s::text[]"
+        " ORDER BY created_at DESC"
+        " LIMIT 1"
+    ).format(columns=_RETURNING)
+
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query, {"pid": project_id, "paths": sorted_paths})
+        row = await cur.fetchone()
+        return _row_to_work_unit(row) if row else None
+
+
 # ── Close ────────────────────────────────────────────────────────
 
 

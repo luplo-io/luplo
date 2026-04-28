@@ -231,6 +231,16 @@ class RemoteBackend:
         resp.raise_for_status()
         return _parse_work_unit(resp.json())
 
+    async def find_existing_import_wu(
+        self,
+        *,
+        project_id: str,
+        source_paths: tuple[str, ...],
+    ) -> WorkUnit | None:
+        raise NotImplementedError(
+            "remote backend does not yet support import dedup — use local mode"
+        )
+
     # ── History ──────────────────────────────────────────────────
 
     async def query_history(

@@ -7,6 +7,7 @@ import pytest
 from luplo.core.work_units import (
     archive_work_unit,
     close_work_unit,
+    find_existing_import_wu,
     find_work_units,
     get_work_unit,
     list_work_units,
@@ -487,3 +488,73 @@ async def test_archive_work_unit_refuses_already_closed_wu(
     assert refetched is not None
     assert refetched.status == "done"
     assert refetched.context.get("replaced_by") is None
+
+
+# ── find_existing_import_wu ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_find_existing_import_wu_matches_path_set(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """Open an import wu, then a path-set lookup returns it.
+
+    Used by ``lp import begin`` for dedup. Only ``context.kind == 'import'``
+    work units count, and the stored ``source_paths`` are matched as a
+    sorted set (order-insensitive).
+    """
+    paths = ("/abs/spec.md", "/abs/plan.md")
+
+    found_initial = await find_existing_import_wu(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        source_paths=paths,
+    )
+    assert found_initial is None
+
+    created = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="import 1",
+        created_by=seed_actor,
+        context={"source_paths": list(paths), "kind": "import"},
+    )
+
+    # Lookup is order-insensitive: pass paths in reversed order and still match.
+    found_after = await find_existing_import_wu(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        source_paths=tuple(reversed(paths)),
+    )
+    assert found_after is not None
+    assert found_after.id == created.id
+
+
+@pytest.mark.asyncio
+async def test_find_existing_import_wu_ignores_archived(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """Archived import wus are not considered existing for dedup purposes."""
+    paths = ("/abs/x.md",)
+
+    created = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="old import",
+        created_by=seed_actor,
+        context={"source_paths": list(paths), "kind": "import"},
+    )
+    await archive_work_unit(
+        conn,  # type: ignore[arg-type]
+        created.id,
+        archived_by=seed_actor,
+        replaced_by_wu_id="wu-new",
+    )
+
+    found = await find_existing_import_wu(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        source_paths=paths,
+    )
+    # Archived ones are NOT considered existing for dedup purposes.
+    assert found is None

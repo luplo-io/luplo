@@ -304,6 +304,23 @@ class Backend(Protocol):
         """
         ...
 
+    async def find_existing_import_wu(
+        self,
+        *,
+        project_id: str,
+        source_paths: tuple[str, ...],
+    ) -> WorkUnit | None:
+        """Find a non-archived import work unit whose source-path set matches.
+
+        Used by ``lp import begin`` for dedup: returns the most recently
+        created work unit in the project whose ``context.kind == 'import'``
+        and whose ``context.source_paths`` (compared as a sorted set) equal
+        the given paths.  Archived and abandoned work units are excluded.
+
+        Returns ``None`` when no match exists.
+        """
+        ...
+
     # ── Systems ──────────────────────────────────────────────────
 
     async def create_system(
