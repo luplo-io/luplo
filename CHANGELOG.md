@@ -11,6 +11,44 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-28
+
+A search-and-discovery release. Adds a raw-`tsquery` escape hatch for
+LLM-composed complex queries, makes every search result include the item
+id (so `luplo_item_show` can actually be called on them), and adds a
+`--version` flag.
+
+### Added
+
+- **`lp --version` / `lp -v`** — print the installed `luplo` version and
+  exit. First question on every bug report; now answerable without
+  `pip show`.
+- **`luplo_item_search` raw-tsquery mode** — new `tsquery=` parameter
+  that bypasses the simple-dialect parser *and* glossary expansion and
+  feeds a raw PostgreSQL `to_tsquery` expression straight to the index.
+  Lets callers (especially LLMs) compose the full operator surface:
+  `&`, `|`, `!`, `:*` prefix, `<->` phrase distance, parentheses for
+  grouping. The legacy `query=` simple dialect (plain words AND, `OR`,
+  `"phrase"`, `-negation`, glossary-expanded) is unchanged. When both
+  are passed, `tsquery` wins and `query` is ignored. Caller is
+  responsible for synonym coverage and syntax validity.
+- `Backend.search()` (LocalBackend, RemoteBackend, BackendProtocol) gains
+  the same `tsquery: str | None` keyword. RemoteBackend forwards it as
+  the `tsquery` query-string parameter on `GET /search`.
+
+### Changed
+
+- **`luplo_item_search` and `luplo_brief` results expose the item id.**
+  Search hits now render as `- <title> (id: <12-char-prefix>) [systems]`
+  instead of `- [<8-char-prefix>] <title>`. The bracketed prefix was
+  easy for both humans and LLMs to misread as a tag/label rather than an
+  addressable identifier; the new form names it as an `id` and can be
+  passed directly to `luplo_item_show`. `luplo_brief`'s items section
+  *also* gets the id (previously it was emitted as
+  `- [<item_type>] <title>` with no id at all — undrillable). Both tools
+  append a one-line hint at the end pointing callers at
+  `luplo_item_show`.
+
 ## [0.10.0] - 2026-04-28
 
 A "drop the dead path" release. The bundled FastAPI HTTP server is
@@ -385,7 +423,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/luplo-io/luplo/releases/tag/v0.11.0
 [0.10.0]: https://github.com/luplo-io/luplo/releases/tag/v0.10.0
 [0.9.0]: https://github.com/luplo-io/luplo/releases/tag/v0.9.0
 [0.8.0]: https://github.com/luplo-io/luplo/releases/tag/v0.8.0
