@@ -50,11 +50,14 @@ class WorkUnit:
     title: str
     description: str | None
     system_ids: list[str]
-    status: str  # in_progress | done | abandoned
+    status: str  # in_progress | done | abandoned | archived
     created_by: str | None
     created_at: datetime
     closed_at: datetime | None
     closed_by: str | None
+    # Free-form per-work-unit metadata (e.g. lp import dedup state).
+    # Backed by the work_units.context JSONB column added in migration 0007.
+    context: dict[str, Any] = field(default_factory=_empty_context)
 
 
 @dataclass(slots=True)

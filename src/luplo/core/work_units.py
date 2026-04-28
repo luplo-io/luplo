@@ -13,6 +13,7 @@ from typing import Any
 
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import WorkUnit
@@ -28,6 +29,7 @@ _COLUMNS = (
     "created_at",
     "closed_at",
     "closed_by",
+    "context",
 )
 
 _RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in _COLUMNS)
@@ -36,12 +38,15 @@ _RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in _COLUMNS)
 def _row_to_work_unit(row: dict[str, Any]) -> WorkUnit:
     """Convert a dict-row into a ``WorkUnit`` dataclass.
 
-    Normalises NULL arrays to empty lists; coerces UUID FKs to strings.
+    Normalises NULL arrays to empty lists; coerces UUID FKs to strings;
+    defaults a NULL ``context`` to ``{}`` (the column is NOT NULL in the
+    schema, but cheap defensive guard for hand-rolled SQL paths).
     """
     row["system_ids"] = row.get("system_ids") or []
     for col in ("created_by", "closed_by"):
         if row.get(col) is not None:
             row[col] = str(row[col])
+    row["context"] = row.get("context") or {}
     return WorkUnit(**row)
 
 
@@ -57,6 +62,7 @@ async def open_work_unit(
     system_ids: list[str] | None = None,
     created_by: str | None = None,
     id: str | None = None,
+    context: dict[str, Any] | None = None,
 ) -> WorkUnit:
     """Create a new work unit in ``in_progress`` status.
 
@@ -67,6 +73,9 @@ async def open_work_unit(
         description: Optional longer description.
         system_ids: Systems this work unit touches.
         created_by: Actor ID of who opened it.
+        context: Free-form JSONB metadata (e.g. ``lp import`` dedup
+            state). Defaults to an empty object. Mirrors the
+            ``items.context`` shape introduced in migration 0003.
 
     Returns:
         The newly created ``WorkUnit``.
@@ -75,9 +84,10 @@ async def open_work_unit(
 
     query = sql.SQL(
         "INSERT INTO work_units"
-        " (id, project_id, title, description, system_ids, created_by)"
+        " (id, project_id, title, description, system_ids, created_by, context)"
         " VALUES"
-        " (%(id)s, %(project_id)s, %(title)s, %(description)s, %(system_ids)s, %(created_by)s)"
+        " (%(id)s, %(project_id)s, %(title)s, %(description)s,"
+        " %(system_ids)s, %(created_by)s, %(context)s)"
         " RETURNING {returning}"
     ).format(returning=_RETURNING)
 
@@ -91,6 +101,7 @@ async def open_work_unit(
                 "description": description,
                 "system_ids": system_ids or None,
                 "created_by": created_by,
+                "context": Jsonb(context or {}),
             },
         )
         row = await cur.fetchone()

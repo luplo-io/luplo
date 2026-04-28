@@ -12,6 +12,57 @@ from luplo.core.work_units import (
     open_work_unit,
 )
 
+# ── context round-trip ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_open_work_unit_roundtrips_context(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """open_work_unit(context=...) is preserved through get_work_unit / list_work_units.
+
+    Mirrors the items.context shape (added in 0003): a NOT NULL JSONB column
+    that the import pipeline uses to stash dedup metadata per work unit.
+    """
+    payload = {
+        "source_paths": ["docs/concepts/lp-import.md", "docs/guides/lp-import.md"],
+        "imports": [
+            {"path": "docs/concepts/lp-import.md", "hash": "deadbeef"},
+        ],
+    }
+
+    created = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="Import bundle",
+        created_by=seed_actor,
+        context=payload,
+    )
+    assert created.context == payload
+
+    fetched = await get_work_unit(conn, created.id)  # type: ignore[arg-type]
+    assert fetched is not None
+    assert fetched.context == payload
+
+    listed = await list_work_units(conn, seed_project)  # type: ignore[arg-type]
+    match = next((w for w in listed if w.id == created.id), None)
+    assert match is not None
+    assert match.context == payload
+
+
+@pytest.mark.asyncio
+async def test_open_work_unit_default_context_is_empty_dict(
+    conn: object, seed_project: str
+) -> None:
+    """Omitting context yields an empty dict (matches the JSONB default ``'{}'``)."""
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="No context",
+    )
+    assert wu.context == {}
+
+
 # ── open_work_unit ───────────────────────────────────────────────
 
 

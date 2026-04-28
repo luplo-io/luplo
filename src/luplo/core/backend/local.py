@@ -172,6 +172,7 @@ class LocalBackend:
         description: str | None = None,
         system_ids: list[str] | None = None,
         created_by: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> WorkUnit:
         async with self.pool.connection() as conn:
             wu = await work_units.open_work_unit(
@@ -182,6 +183,7 @@ class LocalBackend:
                 description=description,
                 system_ids=system_ids,
                 created_by=created_by,
+                context=context,
             )
             if created_by:
                 await audit.record_audit(

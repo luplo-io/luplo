@@ -182,6 +182,7 @@ class RemoteBackend:
         description: str | None = None,
         system_ids: list[str] | None = None,
         created_by: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> WorkUnit:
         resp = await self._client.post(
             "/work-units",
@@ -191,6 +192,7 @@ class RemoteBackend:
                 "title": title,
                 "description": description,
                 "system_ids": system_ids or [],
+                "context": context or {},
             },
         )
         resp.raise_for_status()
@@ -283,6 +285,7 @@ def _parse_work_unit(d: dict[str, Any]) -> WorkUnit:
         created_at=datetime.fromisoformat(d["created_at"]),
         closed_at=datetime.fromisoformat(d["closed_at"]) if d.get("closed_at") else None,
         closed_by=d.get("closed_by"),
+        context=d.get("context") or {},
     )
 
 

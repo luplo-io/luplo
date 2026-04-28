@@ -260,6 +260,7 @@ class Backend(Protocol):
         description: str | None = None,
         system_ids: list[str] | None = None,
         created_by: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> WorkUnit: ...
 
     async def get_work_unit(self, id: str, *, project_id: str | None = None) -> WorkUnit | None:
