@@ -10,16 +10,17 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import tomllib
 import uuid
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import typer
 
-from luplo.config import CONFIG_FILENAME, load_config, write_config
+from luplo.config import CONFIG_FILENAME, find_config_file, load_config, write_config
 from luplo.core.backend.local import LocalBackend
 from luplo.core.db import close_pool, create_pool
 from luplo.core.impact import ImpactNode, ImpactResult
@@ -56,6 +57,7 @@ def _root(
     ),
 ) -> None:
     """luplo — long-term memory for engineering decisions."""
+
 
 items_app = typer.Typer(name="items", help="Manage items (decisions, knowledge, policies).")
 work_app = typer.Typer(name="work", help="Manage work units.")
@@ -105,6 +107,42 @@ def _cfg_db_url() -> str:
     """Resolve DB URL from env → .luplo."""
     cfg = load_config()
     return cfg.db_url
+
+
+def _cfg_language(flag: str | None = None) -> str | None:
+    """Resolve dest_lang from CLI flag → ``.luplo`` ``[project].language``.
+
+    The ``[project].language`` key is optional in the config schema; when it
+    is absent and no flag is provided this helper returns ``None``, which
+    callers interpret as "preserve source language".
+
+    Args:
+        flag: Explicit language code passed on the CLI (highest priority).
+
+    Returns:
+        The language code, or ``None`` when neither the flag nor the TOML
+        key is set.
+    """
+    if flag:
+        return flag
+    config_path = find_config_file()
+    if config_path is None:
+        return None
+    with open(config_path, "rb") as f:
+        data = cast("dict[str, object]", tomllib.load(f))
+    project = data.get("project")
+    if not isinstance(project, dict):
+        return None
+    project_typed = cast("dict[str, object]", project)
+    value = project_typed.get("language")
+    if isinstance(value, str):
+        return value
+    return None
+
+
+# Re-exported alias so static analysis sees the helper as used until
+# Task 14 wires it into the ``lp import`` command.
+cfg_language = _cfg_language
 
 
 # ── Backend lifecycle ────────────────────────────────────────────
