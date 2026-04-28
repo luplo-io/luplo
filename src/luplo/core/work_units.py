@@ -248,7 +248,12 @@ async def archive_work_unit(
         The updated :class:`WorkUnit` with the merged context.
 
     Raises:
-        ValueError: When no work unit matches ``wu_id``.
+        ValueError: When no work unit matches ``wu_id``, or when the work
+            unit exists but is not in ``in_progress`` state. Mirrors the
+            ``status='in_progress'`` guard used by :func:`close_work_unit`
+            so that already-closed/abandoned/archived units cannot have
+            their ``status``, ``closed_at``, ``closed_by``, or
+            ``context.replaced_by`` silently overwritten.
     """
     query = sql.SQL(
         "UPDATE work_units"
@@ -256,7 +261,7 @@ async def archive_work_unit(
         "     closed_at = now(),"
         "     closed_by = %(archived_by)s,"
         "     context = context || %(replaced_by)s"
-        " WHERE id = %(id)s"
+        " WHERE id = %(id)s AND status = 'in_progress'"
         " RETURNING {returning}"
     ).format(returning=_RETURNING)
 
@@ -270,9 +275,20 @@ async def archive_work_unit(
             },
         )
         row = await cur.fetchone()
-        if row is None:
+        if row is not None:
+            return _row_to_work_unit(row)
+
+        # Distinguish "doesn't exist" from "exists but not in_progress".
+        await cur.execute(
+            "SELECT status FROM work_units WHERE id = %(id)s",
+            {"id": wu_id},
+        )
+        existing = await cur.fetchone()
+        if existing is None:
             raise ValueError(f"work_unit not found: {wu_id}")
-        return _row_to_work_unit(row)
+        raise ValueError(
+            f"work_unit not in 'in_progress' state: {wu_id} (current state cannot be archived)"
+        )
 
 
 async def close_work_unit(

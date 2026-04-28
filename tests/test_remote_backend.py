@@ -351,6 +351,34 @@ async def test_close_work_unit() -> None:
     await b.close()
 
 
+@pytest.mark.asyncio
+async def test_archive_work_unit_405_raises_not_implemented() -> None:
+    """405 = route exists but doesn't accept POST → server lacks archive."""
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/work-units/w1/archive"
+        return httpx.Response(405, json={"detail": "method not allowed"})
+
+    b = _make_backend(httpx.MockTransport(handle))
+    with pytest.raises(NotImplementedError):
+        await b.archive_work_unit(id="w1", archived_by="a1", replaced_by_wu_id="w2")
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_archive_work_unit_404_raises_value_error() -> None:
+    """404 = wu_id not found; mirrors LocalBackend's ValueError contract."""
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/work-units/ghost/archive"
+        return httpx.Response(404, json={"detail": "not found"})
+
+    b = _make_backend(httpx.MockTransport(handle))
+    with pytest.raises(ValueError, match="work_unit not found"):
+        await b.archive_work_unit(id="ghost", archived_by="a1", replaced_by_wu_id="w2")
+    await b.close()
+
+
 # ── History ─────────────────────────────────────────────────────
 
 

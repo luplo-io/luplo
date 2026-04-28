@@ -448,3 +448,42 @@ async def test_archive_work_unit_not_found(conn: object, seed_actor: str) -> Non
             archived_by=seed_actor,
             replaced_by_wu_id="wu-new",
         )
+
+
+@pytest.mark.asyncio
+async def test_archive_work_unit_refuses_already_closed_wu(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """Archiving a wu that is already closed must not silently overwrite state.
+
+    Mirrors the ``status='in_progress'`` guard on :func:`close_work_unit`:
+    once the wu is in ``done``/``abandoned``/``archived``, archive must
+    refuse rather than stomping ``status``, ``closed_at``, ``closed_by``,
+    or any prior ``context.replaced_by`` pointer.
+    """
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="Already done",
+        created_by=seed_actor,
+    )
+    closed = await close_work_unit(
+        conn,
+        wu.id,
+        actor_id=seed_actor,  # type: ignore[arg-type]
+    )
+    assert closed is not None and closed.status == "done"
+
+    with pytest.raises(ValueError, match="not in 'in_progress' state"):
+        await archive_work_unit(
+            conn,  # type: ignore[arg-type]
+            wu.id,
+            archived_by=seed_actor,
+            replaced_by_wu_id="wu-successor",
+        )
+
+    # Confirm the row was not mutated by the failed archive.
+    refetched = await get_work_unit(conn, wu.id)  # type: ignore[arg-type]
+    assert refetched is not None
+    assert refetched.status == "done"
+    assert refetched.context.get("replaced_by") is None

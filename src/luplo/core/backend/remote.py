@@ -217,10 +217,17 @@ class RemoteBackend:
                 "replaced_by_wu_id": replaced_by_wu_id,
             },
         )
-        if resp.status_code in (404, 405):
+        # 405 is the canonical "route exists but doesn't accept POST"
+        # signal — older luplo servers without /archive return this.
+        # 404 is ambiguous on its own but here means "wu_id not found"
+        # (a missing route would be 405 since /work-units/{id} exists for
+        # other verbs); map it to ValueError to match LocalBackend.
+        if resp.status_code == 405:
             raise NotImplementedError(
                 "remote backend does not yet support archive — use local mode for force-import"
             )
+        if resp.status_code == 404:
+            raise ValueError(f"work_unit not found: {id}")
         resp.raise_for_status()
         return _parse_work_unit(resp.json())
 
