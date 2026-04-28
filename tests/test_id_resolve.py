@@ -221,3 +221,59 @@ async def test_get_task_accepts_prefix(conn: object, seed_project: str, seed_act
     )
     assert fetched is not None
     assert fetched.id == task.id
+
+
+# ── Non-UUID ids (page_sync slugs) ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolver_accepts_non_uuid_exact_match(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """page_sync items land with deterministic slug ids; the resolver
+    must look them up exactly even though they aren't UUIDs.
+
+    Without the exact-id fast-path, the regex-only check in the legacy
+    resolver treated any non-hex character (``j/k/l/w/-`` etc.) as
+    ``InvalidIdFormatError`` and the user could never call
+    ``luplo_item_show`` on a slugged item.
+    """
+    slug_id = "cj-knowledge-001-inventorysystem-loading-flow"
+    async with conn.cursor() as cur:  # type: ignore[attr-defined]
+        await cur.execute(
+            "INSERT INTO items (id, project_id, item_type, title, actor_id) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (slug_id, seed_project, "knowledge", "Loading Flow", seed_actor),
+        )
+
+    resolved = await resolve_uuid_prefix(
+        conn,  # type: ignore[arg-type]
+        "items",
+        slug_id,
+        project_id=seed_project,
+    )
+    assert resolved == slug_id
+
+    fetched = await get_item(
+        conn,  # type: ignore[arg-type]
+        slug_id,
+        project_id=seed_project,
+    )
+    assert fetched is not None
+    assert fetched.id == slug_id
+
+
+@pytest.mark.asyncio
+async def test_resolver_invalid_when_no_exact_and_not_hex(
+    conn: object, seed_project: str
+) -> None:
+    """If no exact row matches and the input isn't a hex prefix either,
+    the resolver still raises InvalidIdFormatError — preserves the
+    existing not-found-vs-bad-format distinction for callers."""
+    with pytest.raises(InvalidIdFormatError):
+        await resolve_uuid_prefix(
+            conn,  # type: ignore[arg-type]
+            "items",
+            "definitely-not-a-uuid-or-slug-in-db",
+            project_id=seed_project,
+        )

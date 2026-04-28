@@ -105,6 +105,22 @@ async def resolve_uuid_prefix(
     if _is_full_uuid(value):
         return value
 
+    # Some rows arrive via the page_sync pipeline (or other importers) with
+    # deterministic non-UUID ids — typically slugs derived from
+    # ``source_page_id + stable_section_key``. The legacy contract was
+    # "ids are UUIDs", but the column is ``text`` so non-UUID values are
+    # legitimate data. Try an exact-id match first; only fall through to
+    # the hex-prefix path when no exact row exists.
+    exact = await _exact_id_lookup(
+        conn,
+        table=table,
+        value=value,
+        project_id=project_id,
+        project_column=project_column,
+    )
+    if exact is not None:
+        return exact
+
     stripped = _strip(value)
     if not stripped or not _HEX_RE.fullmatch(stripped):
         raise InvalidIdFormatError(value)
@@ -139,6 +155,35 @@ async def resolve_uuid_prefix(
         return str(rows[0]["id"])
     matches = [(str(r["id"]), str(r["label"]) if r["label"] is not None else "") for r in rows]
     raise AmbiguousIdError(value, matches)
+
+
+async def _exact_id_lookup(
+    conn: AsyncConnection[Any],
+    *,
+    table: str,
+    value: str,
+    project_id: str | None,
+    project_column: str,
+) -> str | None:
+    """Return the id verbatim if a row with that exact id exists.
+
+    Used as the first attempt before falling back to UUID hex-prefix
+    lookup, so non-UUID ids (e.g. page_sync slugs) resolve correctly.
+    """
+    where: list[sql.Composable] = [sql.SQL("id = %(v)s")]
+    params: dict[str, Any] = {"v": value}
+    if project_id is not None:
+        where.append(sql.SQL("{col} = %(pid)s").format(col=sql.Identifier(project_column)))
+        params["pid"] = project_id
+
+    query = sql.SQL("SELECT id FROM {table} WHERE {where} LIMIT 1").format(
+        table=sql.Identifier(table),
+        where=sql.SQL(" AND ").join(where),
+    )
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query, params)
+        row = await cur.fetchone()
+    return str(row["id"]) if row else None
 
 
 def build_seed_clause(

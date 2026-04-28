@@ -463,7 +463,7 @@ async def luplo_item_search(
     lines = [f"Found {len(results)} result(s):"]
     for r in results:
         systems = f" [{', '.join(r.item.system_ids)}]" if r.item.system_ids else ""
-        lines.append(f"- {r.item.title} (id: {r.item.id[:12]}){systems}")
+        lines.append(f"- {r.item.title} (id: {r.item.id}){systems}")
         if r.item.body:
             lines.append(f"  {r.item.body[:150]}")
         if r.item.rationale:
@@ -677,7 +677,7 @@ async def luplo_brief(
 
     if items:
         for item in items:
-            lines.append(f"- [{item.item_type}] {item.title} (id: {item.id[:12]})")
+            lines.append(f"- [{item.item_type}] {item.title} (id: {item.id})")
             if item.rationale:
                 lines.append(f"  Rationale: {item.rationale[:100]}")
         lines.append("")
