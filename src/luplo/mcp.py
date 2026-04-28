@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -160,7 +161,7 @@ def _remote_token() -> str:
     if keyring_token:
         return keyring_token
     raise _RemoteAuthMissing(
-        "Remote backend selected (.luplo: backend.type = \"remote\") but "
+        'Remote backend selected (.luplo: backend.type = "remote") but '
         "no credential found. Either run `lps login` (desktop) or set "
         "LUPLO_CLOUD_API_KEY=lupk_... (server / CI). "
         "Issue a key at https://app.luplo.io/settings/api-keys."
@@ -1064,6 +1065,87 @@ async def luplo_save_decisions(
         saved.append(item)
 
     return f"Saved {len(saved)} decision(s)."
+
+
+# ── Import (spec/plan → items) ───────────────────────────────────
+
+
+@mcp.tool()
+async def luplo_import_begin(
+    project_id: str,
+    from_spec: str | None = None,
+    from_plan: str | None = None,
+    dest_lang: str | None = None,
+    force: bool = False,
+    repo_root: str | None = None,
+    actor_id: str = "claude",
+) -> dict[str, Any]:
+    """Stage a new import bundle from spec/plan markdown files.
+
+    Returns one of two response shapes:
+
+    - **manifest** (success): the full ImportManifest JSON. The agent must
+      now read the manifest, extract candidate items per the protocol
+      rules, verify each candidate's status against the repository code
+      (using parallel small-model subagents recommended), then call
+      ``luplo_import_finalize`` with the assembled results.
+    - **refusal** (``status="refused"``): a 3-layer self-documenting
+      refusal carrying ``why``, ``override``, and ``agent_hint`` fields.
+      The agent MUST surface the refusal to the user and explicitly ask
+      before retrying with ``force=true``. Do not silently retry.
+
+    At least one of *from_spec* / *from_plan* is required.
+
+    Rules the agent must enforce on extracted items:
+
+    - Chunk meaningfully (decisions/knowledge granularity, not
+      per-checkbox).
+    - No fenced code blocks in body — replace with a placeholder.
+    - Translate to *dest_lang* if set; preserve source language otherwise.
+    - Rejected proposals with known rationale → standalone decision items.
+
+    Args:
+        project_id: Project owning the bundle.
+        from_spec: Optional path to the spec markdown file.
+        from_plan: Optional path to the plan markdown file.
+        dest_lang: ISO 639-1 target language. ``None`` preserves source
+            language verbatim.
+        force: When True, archive any prior import for the same source
+            set and stage a fresh bundle. Default False — duplicates
+            return a refusal payload.
+        repo_root: Absolute path the agent should use as the repository
+            root for code verification. Defaults to the server's CWD.
+        actor_id: UUID of the actor opening the bundle. The literal
+            ``"claude"`` resolves to the configured ``.luplo`` actor.
+
+    Returns:
+        Either a manifest dict (with ``bundle_id``, ``dest_lang``,
+        ``sources``, ``protocol`` keys) or a refusal dict with
+        ``status="refused"`` plus ``why`` / ``override`` / ``agent_hint``.
+    """
+    from pathlib import Path
+
+    from luplo.core.import_pipeline.begin import begin_import
+
+    aid = _resolve_actor(actor_id)
+    rr = Path(repo_root) if repo_root else Path.cwd()
+
+    b = await _get_backend()
+    result = await begin_import(
+        backend=b,
+        project_id=project_id,
+        actor_id=aid,
+        spec_path=Path(from_spec) if from_spec else None,
+        plan_path=Path(from_plan) if from_plan else None,
+        dest_lang=dest_lang,
+        repo_root=rr,
+        force=force,
+    )
+    if result.kind == "manifest":
+        assert result.manifest is not None
+        return result.manifest.model_dump()
+    assert result.refusal is not None
+    return dict(result.refusal)
 
 
 # ── Entrypoint ───────────────────────────────────────────────────

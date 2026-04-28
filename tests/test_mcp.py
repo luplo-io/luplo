@@ -56,7 +56,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 23
+    assert len(tools) == 24
 
 
 # ── Invocation tests ────────────────────────────────────────────
