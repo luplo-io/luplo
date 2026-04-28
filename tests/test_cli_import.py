@@ -109,3 +109,37 @@ def test_lp_import_begin_duplicate_exits_2_with_refusal(cli_env: Path) -> None:
     combined = (second.output or "") + (second.stderr or "")
     assert "Refused" in combined
     assert "force" in combined.lower()
+
+
+def test_lp_import_finalize_creates_items(cli_env: Path, tmp_path: Path) -> None:
+    runner = CliRunner()
+    spec = str(FIXTURES / "spec-only" / "spec.md")
+
+    begin = runner.invoke(app, ["import", "begin", "--from-spec", spec])
+    manifest = json.loads(begin.output)
+    bundle_id = manifest["bundle_id"]
+
+    results_path = tmp_path / "results.json"
+    results_path.write_text(
+        json.dumps(
+            {
+                "bundle_id": bundle_id,
+                "items": [
+                    {
+                        "item_type": "decision",
+                        "title": "테스트 결정",
+                        "body": "본문",
+                        "status": "done",
+                        "evidence_paths": ["src/x.py:1"],
+                    }
+                ],
+                "close_work_unit": False,
+            }
+        )
+    )
+
+    fin = runner.invoke(app, ["import", "finalize", "--results", str(results_path)])
+    assert fin.exit_code == 0, fin.output
+    summary = json.loads(fin.output)
+    assert summary["status"] == "ok"
+    assert summary["items_created"] == 1

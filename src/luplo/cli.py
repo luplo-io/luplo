@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import sys
 import tomllib
 import uuid
 from collections.abc import AsyncIterator, Coroutine
@@ -1564,6 +1565,59 @@ def import_begin(
                 assert result.refusal is not None
                 typer.echo(render_refusal_text(result.refusal), err=True)
                 raise typer.Exit(code=2)
+
+    _run(_do())
+
+
+@import_app.command("finalize")
+def import_finalize(
+    results: Path = typer.Option(
+        ..., "--results", help="Path to results JSON file (or '-' for stdin)."
+    ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Apply agent-produced results to a staged import bundle.
+
+    Reads the ``ImportResults`` JSON envelope (from a file or stdin),
+    validates it, and forwards it to ``finalize_import`` which writes the
+    contained items to PostgreSQL under the bundle's work unit.
+
+    Args:
+        results: Path to a JSON file produced by the agent, or ``-`` to read
+            the JSON from stdin.
+        project: Project ID override (defaults to ``.luplo``/env).
+        actor: Actor UUID override (defaults to ``.luplo``/env).
+
+    Raises:
+        typer.Exit: Code ``3`` when the results JSON fails pydantic
+            validation.
+    """
+    import json as _json
+
+    from luplo.core.import_pipeline.finalize import finalize_import
+    from luplo.core.import_pipeline.results import ImportResults
+
+    pid = _cfg_project(project)
+    aid = _cfg_actor(actor)
+
+    raw = sys.stdin.read() if str(results) == "-" else Path(results).read_text(encoding="utf-8")
+
+    try:
+        parsed = ImportResults.model_validate_json(raw)
+    except Exception as exc:
+        typer.echo(f"Error: invalid results JSON — {exc}", err=True)
+        raise typer.Exit(code=3) from exc
+
+    async def _do() -> None:
+        async with _backend() as b:
+            summary = await finalize_import(
+                backend=b,
+                project_id=pid,
+                actor_id=aid,
+                results=parsed,
+            )
+            typer.echo(_json.dumps(summary, indent=2, default=str))
 
     _run(_do())
 
