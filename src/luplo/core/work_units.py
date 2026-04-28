@@ -276,16 +276,22 @@ async def archive_work_unit(
     *,
     archived_by: str,
     replaced_by_wu_id: str,
-) -> WorkUnit:
+) -> tuple[WorkUnit, int]:
     """Mark a work unit as superseded by a force-import.
 
     Sets ``status='archived'``, stamps ``closed_at``/``closed_by``, and
     merges ``{"replaced_by": replaced_by_wu_id}`` into the existing
-    ``context`` JSONB (pre-existing keys are preserved).
+    ``context`` JSONB (pre-existing keys are preserved). In the same
+    transaction, soft-deletes every active item linked to the work unit
+    (``work_unit_id = wu_id`` AND ``deleted_at IS NULL``) by stamping
+    ``deleted_at = now()``. Rows are preserved for audit; default
+    item-search paths simply stop returning them.
 
     Distinct from :func:`close_work_unit` (``status='done'`` or
     ``'abandoned'``): archive is the explicit "this work unit was
     replaced by a fresh re-import" signal used by ``lp import --force``.
+    Soft-deleting linked items prevents duplicate hits in default search
+    when force-replace re-extracts the bundle (e.g. into a new language).
 
     Args:
         conn: Async psycopg connection.
@@ -295,7 +301,8 @@ async def archive_work_unit(
             ``context.replaced_by`` so consumers can follow the chain.
 
     Returns:
-        The updated :class:`WorkUnit` with the merged context.
+        A tuple of the updated :class:`WorkUnit` and the number of items
+        that were soft-deleted as part of the archive.
 
     Raises:
         ValueError: When no work unit matches ``wu_id``, or when the work
@@ -325,20 +332,31 @@ async def archive_work_unit(
             },
         )
         row = await cur.fetchone()
-        if row is not None:
-            return _row_to_work_unit(row)
+        if row is None:
+            # Distinguish "doesn't exist" from "exists but not in_progress".
+            await cur.execute(
+                "SELECT status FROM work_units WHERE id = %(id)s",
+                {"id": wu_id},
+            )
+            existing = await cur.fetchone()
+            if existing is None:
+                raise ValueError(f"work_unit not found: {wu_id}")
+            raise ValueError(
+                f"work_unit not in 'in_progress' state: {wu_id} (current state cannot be archived)"
+            )
 
-        # Distinguish "doesn't exist" from "exists but not in_progress".
+        # Soft-delete every active item linked to this wu in the SAME
+        # transaction. Rows stay (audit trail), but default list/search
+        # paths filter on deleted_at IS NULL and will skip them.
         await cur.execute(
-            "SELECT status FROM work_units WHERE id = %(id)s",
-            {"id": wu_id},
+            "UPDATE items"
+            " SET deleted_at = now(), updated_at = now()"
+            " WHERE work_unit_id = %(wu_id)s AND deleted_at IS NULL"
+            " RETURNING id",
+            {"wu_id": wu_id},
         )
-        existing = await cur.fetchone()
-        if existing is None:
-            raise ValueError(f"work_unit not found: {wu_id}")
-        raise ValueError(
-            f"work_unit not in 'in_progress' state: {wu_id} (current state cannot be archived)"
-        )
+        soft_deleted = await cur.fetchall()
+        return _row_to_work_unit(row), len(soft_deleted)
 
 
 async def close_work_unit(

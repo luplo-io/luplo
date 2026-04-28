@@ -137,6 +137,70 @@ async def test_work_unit_lifecycle(backend: LocalBackend) -> None:
 
 
 @pytest.mark.asyncio
+async def test_archive_work_unit_audit_records_soft_delete_count(
+    backend: LocalBackend,
+) -> None:
+    """``archive_work_unit`` records ``items_soft_deleted`` in audit metadata.
+
+    The count surfaces the number of items the archive cascaded into a
+    soft-delete (lp import --force re-extracts, prior items must stop
+    showing up in default search). Auditability matters because the
+    archive verb otherwise looks like a no-op on items.
+    """
+    pid = _uid()
+    aid = _uid()
+    await backend.create_project(id=pid, name=f"proj-{pid[:8]}")
+    await backend.create_actor(id=aid, name="Actor")
+
+    wu = await backend.open_work_unit(
+        id=_uid(),
+        project_id=pid,
+        title="Bundle to archive",
+        created_by=aid,
+    )
+
+    await backend.create_item(
+        ItemCreate(
+            project_id=pid,
+            actor_id=aid,
+            item_type="decision",
+            title="A",
+            work_unit_id=wu.id,
+        )
+    )
+    await backend.create_item(
+        ItemCreate(
+            project_id=pid,
+            actor_id=aid,
+            item_type="knowledge",
+            title="B",
+            work_unit_id=wu.id,
+        )
+    )
+
+    successor_id = _uid()
+    archived = await backend.archive_work_unit(
+        id=wu.id,
+        archived_by=aid,
+        replaced_by_wu_id=successor_id,
+    )
+    assert archived.status == "archived"
+
+    async with backend.pool.connection() as c, c.cursor() as cur:
+        await cur.execute(
+            "SELECT metadata FROM audit_log"
+            " WHERE action = %s AND target_id = %s"
+            " ORDER BY timestamp DESC LIMIT 1",
+            ("work_unit.archive", wu.id),
+        )
+        row = await cur.fetchone()
+    assert row is not None
+    metadata = row[0]
+    assert metadata["replaced_by"] == successor_id
+    assert metadata["items_soft_deleted"] == 2
+
+
+@pytest.mark.asyncio
 async def test_search_through_backend(backend: LocalBackend) -> None:
     pid = _uid()
     aid = _uid()

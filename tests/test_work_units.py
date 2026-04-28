@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import pytest
 
+from luplo.core.items import (
+    create_item,
+    get_item,
+    get_item_including_deleted,
+    list_items,
+)
+from luplo.core.models import ItemCreate
 from luplo.core.work_units import (
     archive_work_unit,
     close_work_unit,
@@ -394,7 +401,7 @@ async def test_archive_work_unit_sets_status_and_replaces_pointer(
         created_by=seed_actor,
     )
 
-    archived = await archive_work_unit(
+    archived, items_soft_deleted = await archive_work_unit(
         conn,  # type: ignore[arg-type]
         wu.id,
         archived_by=seed_actor,
@@ -406,6 +413,8 @@ async def test_archive_work_unit_sets_status_and_replaces_pointer(
     assert archived.closed_at is not None
     assert archived.closed_by == seed_actor
     assert archived.context.get("replaced_by") == "wu-new"
+    # No items were linked to this wu, so nothing to soft-delete.
+    assert items_soft_deleted == 0
 
 
 @pytest.mark.asyncio
@@ -425,7 +434,7 @@ async def test_archive_work_unit_preserves_existing_context(
         context=payload,
     )
 
-    archived = await archive_work_unit(
+    archived, _ = await archive_work_unit(
         conn,  # type: ignore[arg-type]
         wu.id,
         archived_by=seed_actor,
@@ -437,6 +446,138 @@ async def test_archive_work_unit_preserves_existing_context(
     # Pre-existing keys must survive the JSONB merge.
     assert archived.context.get("source_paths") == payload["source_paths"]
     assert archived.context.get("imports") == payload["imports"]
+
+
+@pytest.mark.asyncio
+async def test_archive_work_unit_soft_deletes_linked_items(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """Archiving a wu soft-deletes every active item linked to it.
+
+    ``lp import begin --force`` re-extracts the bundle into a fresh wu,
+    typically into a new ``dest_lang``. Without soft-deleting the prior
+    bundle's items, the same information is alive twice and shows up as
+    duplicates in default search. Archive's intent is "this bundle is
+    deprecated"; the items must follow.
+    """
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="Archive me with items",
+        created_by=seed_actor,
+    )
+
+    item_a = await create_item(
+        conn,  # type: ignore[arg-type]
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Linked decision A",
+            work_unit_id=wu.id,
+        ),
+    )
+    item_b = await create_item(
+        conn,  # type: ignore[arg-type]
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="knowledge",
+            title="Linked knowledge B",
+            work_unit_id=wu.id,
+        ),
+    )
+
+    archived, items_soft_deleted = await archive_work_unit(
+        conn,  # type: ignore[arg-type]
+        wu.id,
+        archived_by=seed_actor,
+        replaced_by_wu_id="wu-new",
+    )
+
+    assert archived.status == "archived"
+    assert items_soft_deleted == 2
+
+    # Both items are now soft-deleted: rows still exist, but deleted_at
+    # is set, so default lookups return None.
+    assert await get_item(conn, item_a.id) is None  # type: ignore[arg-type]
+    assert await get_item(conn, item_b.id) is None  # type: ignore[arg-type]
+
+    raw_a = await get_item_including_deleted(conn, item_a.id)  # type: ignore[arg-type]
+    raw_b = await get_item_including_deleted(conn, item_b.id)  # type: ignore[arg-type]
+    assert raw_a is not None and raw_a.deleted_at is not None
+    assert raw_b is not None and raw_b.deleted_at is not None
+
+    # Default list_items() filters on deleted_at IS NULL.
+    listed = await list_items(conn, seed_project)  # type: ignore[arg-type]
+    listed_ids = {it.id for it in listed}
+    assert item_a.id not in listed_ids
+    assert item_b.id not in listed_ids
+
+    # include_deleted=True still surfaces them (audit trail preserved).
+    listed_all = await list_items(
+        conn,  # type: ignore[arg-type]
+        seed_project,
+        include_deleted=True,
+    )
+    listed_all_ids = {it.id for it in listed_all}
+    assert item_a.id in listed_all_ids
+    assert item_b.id in listed_all_ids
+
+
+@pytest.mark.asyncio
+async def test_archive_work_unit_skips_already_deleted_items(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """Items soft-deleted before archive are not re-counted or re-stamped.
+
+    Guards the ``deleted_at IS NULL`` clause in the soft-delete UPDATE:
+    only currently-active items contribute to ``items_soft_deleted``.
+    """
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="Archive with one already deleted",
+        created_by=seed_actor,
+    )
+
+    # One active, one already soft-deleted.
+    active = await create_item(
+        conn,  # type: ignore[arg-type]
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Still active",
+            work_unit_id=wu.id,
+        ),
+    )
+    pre_deleted = await create_item(
+        conn,  # type: ignore[arg-type]
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Already gone",
+            work_unit_id=wu.id,
+        ),
+    )
+    await conn.execute(  # type: ignore[union-attr]
+        "UPDATE items SET deleted_at = now() WHERE id = %s",
+        (pre_deleted.id,),
+    )
+
+    _, items_soft_deleted = await archive_work_unit(
+        conn,  # type: ignore[arg-type]
+        wu.id,
+        archived_by=seed_actor,
+        replaced_by_wu_id="wu-new",
+    )
+
+    # Only the still-active item was soft-deleted by archive itself.
+    assert items_soft_deleted == 1
+    raw_active = await get_item_including_deleted(conn, active.id)  # type: ignore[arg-type]
+    assert raw_active is not None and raw_active.deleted_at is not None
 
 
 @pytest.mark.asyncio
@@ -544,12 +685,13 @@ async def test_find_existing_import_wu_ignores_archived(
         created_by=seed_actor,
         context={"source_paths": list(paths), "kind": "import"},
     )
-    await archive_work_unit(
+    archived, _ = await archive_work_unit(
         conn,  # type: ignore[arg-type]
         created.id,
         archived_by=seed_actor,
         replaced_by_wu_id="wu-new",
     )
+    assert archived.status == "archived"
 
     found = await find_existing_import_wu(
         conn,  # type: ignore[arg-type]

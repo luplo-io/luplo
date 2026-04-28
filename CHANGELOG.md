@@ -16,9 +16,12 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 - `.luplo [project].language` optional key for dest-lang default.
 - `.claude/commands/lp-import.md` Claude Code slash command orchestrating the two-phase flow.
 - `docs/guides/lp-import.md` user guide.
+- `protocol.notices` field on `ImportManifest` — surfaces explicit warnings to the calling agent (e.g. when `dest_lang` is null, an item-language notice appears so the agent can ask the user before proceeding).
 
 ### Changed
 - `WorkUnit` gains a `context: dict` field (jsonb storage); `Backend.open_work_unit` accepts an optional `context` kwarg. Existing callers pass `None` / use the default factory.
+- `lp import begin` refusal now distinguishes a third case: byte-identical content + different `dest_lang` reports the language mismatch explicitly with both prior and current language codes, instead of falling through to the generic "exact rerun" message.
+- `archive_work_unit` (used by `lp import begin --force`) now soft-deletes every active item linked to the archived work unit. The rows stay for audit; default item searches stop returning them. The audit log records the soft-delete count via `items_soft_deleted` metadata.
 
 ### Fixed
 - (none)

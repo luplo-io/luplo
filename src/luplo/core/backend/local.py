@@ -237,7 +237,7 @@ class LocalBackend:
         replaced_by_wu_id: str,
     ) -> WorkUnit:
         async with self.pool.connection() as conn:
-            wu = await work_units.archive_work_unit(
+            wu, items_soft_deleted = await work_units.archive_work_unit(
                 conn,
                 id,
                 archived_by=archived_by,
@@ -249,7 +249,10 @@ class LocalBackend:
                 action="work_unit.archive",
                 target_type="work_unit",
                 target_id=id,
-                metadata={"replaced_by": replaced_by_wu_id},
+                metadata={
+                    "replaced_by": replaced_by_wu_id,
+                    "items_soft_deleted": items_soft_deleted,
+                },
             )
             return wu
 
