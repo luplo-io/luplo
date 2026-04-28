@@ -11,6 +11,29 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-28
+
+A "remote becomes real" release. `lp mcp` now has a working remote backend
+path so the OSS CLI can drive the hosted luplo cloud (or any compatible
+HTTP server) instead of only a local Postgres.
+
+### Added
+
+- **Remote-mode MCP server** — `lp mcp` now reads `[backend] type = "remote"`
+  + `server_url` from `.luplo` and routes tool calls through the configured
+  HTTP server instead of dialing local Postgres. Local mode is unchanged
+  and remains the default.
+- **Two-source token resolution for remote mode** —
+  `LUPLO_CLOUD_API_KEY` env var (long-lived `lupk_…` API keys, the path for
+  servers / CI / IaC) wins, falling back to the OS keyring entry written by
+  `lps login` (short-lived OAuth access JWT, for interactive desktop use).
+  When neither is present, a friendly error points at both escape hatches.
+  `keyring` is consulted via optional import — installations without it
+  silently skip to the env path.
+- **`RemoteBackend.query_history()`** — fills the last `Backend` Protocol
+  gap so `luplo_history_query` works in remote mode against a server
+  exposing `GET /history`.
+
 ## [0.8.0] - 2026-04-27
 
 A "surface catches up to core" release. Seven gaps where the CLI/MCP
@@ -330,7 +353,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/luplo-io/luplo/releases/tag/v0.9.0
 [0.8.0]: https://github.com/luplo-io/luplo/releases/tag/v0.8.0
 [0.7.1]: https://github.com/luplo-io/luplo/releases/tag/v0.7.1
 [0.7.0]: https://github.com/luplo-io/luplo/releases/tag/v0.7.0
