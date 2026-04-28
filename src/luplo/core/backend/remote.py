@@ -13,6 +13,7 @@ import httpx
 
 from luplo.core.impact import ImpactEdge, ImpactNode, ImpactResult
 from luplo.core.models import (
+    HistoryEntry,
     Item,
     ItemCreate,
     Project,
@@ -197,6 +198,30 @@ class RemoteBackend:
         resp.raise_for_status()
         return _parse_work_unit(resp.json())
 
+    # ── History ──────────────────────────────────────────────────
+
+    async def query_history(
+        self,
+        *,
+        project_id: str | None = None,
+        item_id: str | None = None,
+        since: datetime | None = None,
+        semantic_impacts: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[HistoryEntry]:
+        params: dict[str, Any] = {"limit": limit}
+        if project_id is not None:
+            params["project_id"] = project_id
+        if item_id is not None:
+            params["item_id"] = item_id
+        if since is not None:
+            params["since"] = since.isoformat()
+        if semantic_impacts:
+            params["semantic_impacts"] = semantic_impacts
+        resp = await self._client.get("/history", params=params)
+        resp.raise_for_status()
+        return [_parse_history_entry(e) for e in resp.json()]
+
 
 # ── Parsers ──────────────────────────────────────────────────────
 
@@ -280,6 +305,24 @@ def _parse_impact(d: dict[str, Any]) -> ImpactResult:
         root=root,
         nodes=nodes,
         depth_requested=d["depth_requested"],
+    )
+
+
+def _parse_history_entry(d: dict[str, Any]) -> HistoryEntry:
+    return HistoryEntry(
+        id=d["id"],
+        item_id=d["item_id"],
+        version=d["version"],
+        content_before=d.get("content_before"),
+        content_after=d.get("content_after"),
+        content_hash_before=d.get("content_hash_before"),
+        content_hash_after=d.get("content_hash_after"),
+        diff_summary=d.get("diff_summary"),
+        semantic_impact=d.get("semantic_impact"),
+        changed_at=datetime.fromisoformat(d["changed_at"]),
+        changed_by=d["changed_by"],
+        source_event_id=d.get("source_event_id"),
+        notification_sent=bool(d.get("notification_sent", False)),
     )
 
 

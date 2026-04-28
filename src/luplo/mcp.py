@@ -27,6 +27,8 @@ from mcp.server.fastmcp import FastMCP
 
 from luplo.config import load_config
 from luplo.core.backend.local import LocalBackend
+from luplo.core.backend.protocol import Backend
+from luplo.core.backend.remote import RemoteBackend
 from luplo.core.db import create_pool
 from luplo.core.models import Item, ItemCreate
 
@@ -101,16 +103,87 @@ something:
 
 # ── Backend lifecycle ────────────────────────────────────────────
 
-_backend: LocalBackend | None = None
+_backend: Backend | None = None
 
 
-async def _get_backend() -> LocalBackend:
-    """Lazy-initialise the backend on first tool call."""
+class _RemoteAuthMissing(RuntimeError):
+    """Raised when a remote-mode backend is requested but no token is on hand.
+
+    The MCP server cannot prompt interactively, so we surface a clear,
+    actionable error string in the first tool response rather than crashing
+    deep inside an HTTP call with a 401.
+    """
+
+
+_KEYRING_SERVICE = "luplo-cloud"
+_KEYRING_SLOT = "access"
+
+
+def _read_keyring_token() -> str | None:
+    """Best-effort read of the access token ``lps login`` stores.
+
+    Returns ``None`` if ``keyring`` isn't installed (it's an optional dep —
+    headless installs typically skip it), if the OS has no keyring backend,
+    or if no token is stored. The caller falls through to a friendly error.
+    """
+    try:
+        import keyring  # local import: optional dep
+    except ImportError:
+        return None
+    try:
+        value = keyring.get_password(_KEYRING_SERVICE, _KEYRING_SLOT)
+    except Exception:
+        # NoKeyringError, locked keyring, etc — same outcome: no token.
+        return None
+    return (value or "").strip() or None
+
+
+def _remote_token() -> str:
+    """Resolve the bearer for remote mode.
+
+    Priority (high → low):
+      1. ``LUPLO_CLOUD_API_KEY`` env var (long-lived ``lupk_…`` API key — the
+         path used by servers, CI, and IaC)
+      2. OS keyring entry written by ``lps login`` (short-lived OAuth access
+         JWT — convenient for desktop sessions)
+
+    Note: keyring access tokens are JWTs with ~15-minute TTL. If the JWT
+    expires mid-session, tool calls will start returning 401 and the user
+    must re-run ``lps login`` and restart ``lp mcp``. A future cycle can add
+    refresh-on-401 inside RemoteBackend; for now, env-based API keys are
+    the recommended path for long-running MCP servers.
+    """
+    token = os.environ.get("LUPLO_CLOUD_API_KEY", "").strip()
+    if token:
+        return token
+    keyring_token = _read_keyring_token()
+    if keyring_token:
+        return keyring_token
+    raise _RemoteAuthMissing(
+        "Remote backend selected (.luplo: backend.type = \"remote\") but "
+        "no credential found. Either run `lps login` (desktop) or set "
+        "LUPLO_CLOUD_API_KEY=lupk_... (server / CI). "
+        "Issue a key at https://app.luplo.io/settings/api-keys."
+    )
+
+
+async def _get_backend() -> Backend:
+    """Lazy-initialise the backend on first tool call.
+
+    Selection (priority high→low):
+      1. ``.luplo`` ``[backend] type = "remote"`` + ``server_url`` → RemoteBackend
+         with bearer from ``LUPLO_CLOUD_API_KEY``.
+      2. Otherwise → LocalBackend on ``LUPLO_DB_URL`` (or default).
+    """
     global _backend
     if _backend is None:
-        db_url = os.environ.get("LUPLO_DB_URL", "postgresql://localhost/luplo")
-        pool = await create_pool(db_url)
-        _backend = LocalBackend(pool)
+        cfg = load_config()
+        if cfg.backend_type == "remote" and cfg.server_url:
+            _backend = RemoteBackend(cfg.server_url, token=_remote_token())
+        else:
+            db_url = os.environ.get("LUPLO_DB_URL", "postgresql://localhost/luplo")
+            pool = await create_pool(db_url)
+            _backend = LocalBackend(pool)
     return _backend
 
 

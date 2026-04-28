@@ -351,6 +351,78 @@ async def test_close_work_unit() -> None:
     await b.close()
 
 
+# ── History ─────────────────────────────────────────────────────
+
+
+def _history_payload(item_id: str = "i1", version: int = 1) -> dict[str, Any]:
+    return {
+        "id": 99,
+        "item_id": item_id,
+        "version": version,
+        "content_before": None,
+        "content_after": "hello",
+        "content_hash_before": None,
+        "content_hash_after": "deadbeef",
+        "diff_summary": "added body",
+        "semantic_impact": None,
+        "changed_at": _iso(_NOW),
+        "changed_by": "actor-1",
+        "source_event_id": None,
+        "notification_sent": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_query_history_minimal() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/history"
+        params = dict(request.url.params)
+        assert params == {"limit": "50", "project_id": "p1"}
+        return httpx.Response(200, json=[_history_payload()])
+
+    b = _make_backend(httpx.MockTransport(handle))
+    rows = await b.query_history(project_id="p1")
+    assert len(rows) == 1
+    assert rows[0].item_id == "i1"
+    assert rows[0].version == 1
+    assert rows[0].changed_at == _NOW
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_query_history_filters_passed_through() -> None:
+    """item_id, since, semantic_impacts, limit all forwarded as query params."""
+    seen: dict[str, Any] = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.update(request.url.params.multi_items())
+        return httpx.Response(200, json=[])
+
+    b = _make_backend(httpx.MockTransport(handle))
+    await b.query_history(
+        project_id="p1",
+        item_id="i1",
+        since=_NOW,
+        semantic_impacts=["body_changed"],
+        limit=10,
+    )
+    assert seen.get("project_id") == "p1"
+    assert seen.get("item_id") == "i1"
+    assert seen.get("since") == _iso(_NOW)
+    assert seen.get("limit") == "10"
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_query_history_empty() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[])
+
+    b = _make_backend(httpx.MockTransport(handle))
+    assert await b.query_history(project_id="p1") == []
+    await b.close()
+
+
 # ── Constructor ─────────────────────────────────────────────────
 
 
