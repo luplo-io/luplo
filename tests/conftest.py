@@ -7,12 +7,13 @@ so tests never interfere with each other and the DB stays clean.
 from __future__ import annotations
 
 import os
-import subprocess
 
 import psycopg
 import pytest
 import pytest_asyncio
 from psycopg import sql
+
+from luplo._migrate import run_upgrade_head
 
 TEST_DB_NAME = "luplo_test"
 DEFAULT_DB_URL = f"postgresql://postgres:localdb@localhost/{TEST_DB_NAME}"
@@ -40,15 +41,8 @@ def db_url() -> str:
             conn.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name)))
             conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name)))
 
-    # Run alembic migrations
-    project_root = os.path.dirname(os.path.dirname(__file__))
-    subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=project_root,
-        env={**os.environ, "LUPLO_DB_URL": url},
-        check=True,
-        capture_output=True,
-    )
+    # Run alembic migrations against the wheel-bundled assets.
+    run_upgrade_head(url)
 
     yield url
 

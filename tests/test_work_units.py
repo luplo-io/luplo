@@ -635,21 +635,21 @@ async def test_archive_work_unit_refuses_already_closed_wu(
 
 
 @pytest.mark.asyncio
-async def test_find_existing_import_wu_matches_path_set(
+async def test_find_existing_import_wu_matches_content_hash_set(
     conn: object, seed_project: str, seed_actor: str
 ) -> None:
-    """Open an import wu, then a path-set lookup returns it.
+    """Open an import wu, then a content-hash-set lookup returns it.
 
     Used by ``lp import begin`` for dedup. Only ``context.kind == 'import'``
-    work units count, and the stored ``source_paths`` are matched as a
+    work units count, and the stored ``content_hash_set`` is matched as a
     sorted set (order-insensitive).
     """
-    paths = ("/abs/spec.md", "/abs/plan.md")
+    hashes = ("hash-spec", "hash-plan")
 
     found_initial = await find_existing_import_wu(
         conn,  # type: ignore[arg-type]
         project_id=seed_project,
-        source_paths=paths,
+        content_hash_set=hashes,
     )
     assert found_initial is None
 
@@ -658,14 +658,14 @@ async def test_find_existing_import_wu_matches_path_set(
         project_id=seed_project,
         title="import 1",
         created_by=seed_actor,
-        context={"source_paths": list(paths), "kind": "import"},
+        context={"content_hash_set": list(hashes), "kind": "import"},
     )
 
-    # Lookup is order-insensitive: pass paths in reversed order and still match.
+    # Lookup is order-insensitive: reversed input still matches.
     found_after = await find_existing_import_wu(
         conn,  # type: ignore[arg-type]
         project_id=seed_project,
-        source_paths=tuple(reversed(paths)),
+        content_hash_set=tuple(reversed(hashes)),
     )
     assert found_after is not None
     assert found_after.id == created.id
@@ -676,14 +676,14 @@ async def test_find_existing_import_wu_ignores_archived(
     conn: object, seed_project: str, seed_actor: str
 ) -> None:
     """Archived import wus are not considered existing for dedup purposes."""
-    paths = ("/abs/x.md",)
+    hashes = ("hash-x",)
 
     created = await open_work_unit(
         conn,  # type: ignore[arg-type]
         project_id=seed_project,
         title="old import",
         created_by=seed_actor,
-        context={"source_paths": list(paths), "kind": "import"},
+        context={"content_hash_set": list(hashes), "kind": "import"},
     )
     archived, _ = await archive_work_unit(
         conn,  # type: ignore[arg-type]
@@ -696,7 +696,7 @@ async def test_find_existing_import_wu_ignores_archived(
     found = await find_existing_import_wu(
         conn,  # type: ignore[arg-type]
         project_id=seed_project,
-        source_paths=paths,
+        content_hash_set=hashes,
     )
     # Archived ones are NOT considered existing for dedup purposes.
     assert found is None

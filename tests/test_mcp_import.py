@@ -72,6 +72,12 @@ def fresh_actor(db_url: str) -> str:
     return aid
 
 
+def _spec_source(rel: str) -> dict[str, str]:
+    """Build a sources entry from a fixture path; reads happen client-side."""
+    p = FIXTURES / rel
+    return {"kind": "spec", "path": str(p), "content": p.read_text(encoding="utf-8")}
+
+
 @pytest.mark.asyncio
 async def test_luplo_import_begin_returns_manifest_dict(
     fresh_project: _FreshProject,
@@ -79,8 +85,7 @@ async def test_luplo_import_begin_returns_manifest_dict(
 ) -> None:
     res = await luplo_import_begin(
         project_id=fresh_project.id,
-        from_spec=str(FIXTURES / "spec-only" / "spec.md"),
-        from_plan=None,
+        sources=[_spec_source("spec-only/spec.md")],
         dest_lang="ko",
         force=False,
         repo_root=str(Path.cwd()),
@@ -96,11 +101,9 @@ async def test_luplo_import_begin_duplicate_returns_refusal(
     fresh_project: _FreshProject,
     fresh_actor: str,
 ) -> None:
-    spec = str(FIXTURES / "spec-only" / "spec.md")
     first = await luplo_import_begin(
         project_id=fresh_project.id,
-        from_spec=spec,
-        from_plan=None,
+        sources=[_spec_source("spec-only/spec.md")],
         dest_lang=None,
         force=False,
         repo_root=str(Path.cwd()),
@@ -110,8 +113,7 @@ async def test_luplo_import_begin_duplicate_returns_refusal(
 
     second = await luplo_import_begin(
         project_id=fresh_project.id,
-        from_spec=spec,
-        from_plan=None,
+        sources=[_spec_source("spec-only/spec.md")],
         dest_lang=None,
         force=False,
         repo_root=str(Path.cwd()),
@@ -129,8 +131,7 @@ async def test_luplo_import_finalize_creates_items(
 ) -> None:
     begin_res = await luplo_import_begin(
         project_id=fresh_project.id,
-        from_spec=str(FIXTURES / "spec-only" / "spec.md"),
-        from_plan=None,
+        sources=[_spec_source("spec-only/spec.md")],
         dest_lang=None,
         force=False,
         repo_root=str(Path.cwd()),

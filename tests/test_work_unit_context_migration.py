@@ -37,21 +37,27 @@ async def test_work_units_has_context_column(
 
 
 @pytest.mark.asyncio
-async def test_work_units_context_gin_index_on_source_paths(
+async def test_work_units_context_gin_index_on_content_hash_set(
     conn: psycopg.AsyncConnection[TupleRow],
 ) -> None:
-    """A GIN index on ``context->'source_paths'`` exists for fast dedup lookups."""
+    """A GIN index on ``context->'content_hash_set'`` exists for fast dedup lookups.
+
+    Content-hash-based dedup (vs the original path-based key) is what
+    makes the import pipeline cwd-independent and cloud-friendly: the
+    server has no concept of the agent's filesystem layout, so paths
+    are unreliable.
+    """
     async with conn.cursor() as cur:
         await cur.execute(
             "SELECT indexname, indexdef "
             "FROM pg_indexes "
             "WHERE tablename = 'work_units' "
-            "  AND indexname = 'idx_work_units_context_source_paths'"
+            "  AND indexname = 'idx_work_units_context_content_hash_set'"
         )
         row = await cur.fetchone()
     assert row is not None, (
-        "GIN index idx_work_units_context_source_paths missing — migration 0007 incomplete"
+        "GIN index idx_work_units_context_content_hash_set missing — migration 0007 incomplete"
     )
     _, indexdef = row
     assert "using gin" in indexdef.lower()
-    assert "source_paths" in indexdef
+    assert "content_hash_set" in indexdef

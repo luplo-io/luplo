@@ -8,8 +8,6 @@ file → env vars → CLI flags (highest priority wins).
 from __future__ import annotations
 
 import asyncio
-import os
-import subprocess
 import sys
 import tomllib
 import uuid
@@ -96,12 +94,24 @@ def _cfg_project(flag: str | None = None) -> str:
 
 
 def _cfg_actor(flag: str | None = None) -> str:
-    """Resolve actor ID from flag → env → .luplo."""
+    """Resolve actor ID from flag → env → .luplo.
+
+    In ``backend.type = "remote"`` mode, returns an empty string when no
+    actor is configured. The SaaS server resolves the caller from the
+    bearer token; ``RemoteBackend`` deliberately omits actor fields from
+    request payloads, and the server rejects any client-supplied actor
+    to prevent impersonation. So in remote mode an empty string is the
+    correct, non-fatal default — backend code paths that take an
+    ``actor_id`` parameter still receive a string and can pass it
+    through, but it never reaches the wire.
+    """
     if flag:
         return flag
     cfg = load_config()
     if cfg.actor_id:
         return cfg.actor_id
+    if cfg.backend_type == "remote":
+        return ""
     typer.echo("Error: no actor. Use --actor, LUPLO_ACTOR_ID, or run 'lp init'.", err=True)
     raise typer.Exit(1)
 
@@ -192,6 +202,46 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
         raise typer.Exit(2) from exc
 
 
+# ── Migrate ──────────────────────────────────────────────────────
+
+
+@app.command("migrate")
+def migrate(
+    db_url: str = typer.Option(
+        "",
+        "--db-url",
+        envvar="LUPLO_DB_URL",
+        help="PostgreSQL connection URL. Defaults to $LUPLO_DB_URL.",
+    ),
+) -> None:
+    """Run alembic migrations against ``LUPLO_DB_URL``.
+
+    Idempotent — safe to call from container boot scripts. Does not read
+    ``.luplo`` and does not require a config file. Production deploys
+    should invoke this directly (e.g. in ``start.sh``) before launching
+    the application.
+
+    \b
+    Examples:
+        LUPLO_DB_URL=postgresql://... lp migrate
+        lp migrate --db-url postgresql://...
+    """
+    if not db_url:
+        typer.echo(
+            "Error: no database URL. Pass --db-url or set $LUPLO_DB_URL.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    from luplo._migrate import run_upgrade_head
+
+    try:
+        run_upgrade_head(db_url)
+    except Exception as exc:
+        typer.echo(f"Migration failed: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo("Migrations up to date.")
+
+
 # ── Init ─────────────────────────────────────────────────────────
 
 
@@ -267,24 +317,14 @@ def init(
     typer.echo(f"Created {CONFIG_FILENAME}")
 
     typer.echo("Running migrations...")
-    project_root = Path(__file__).resolve().parent.parent.parent
-    alembic_ini = project_root / "alembic.ini"
-    env = {**os.environ, "LUPLO_DB_URL": db_url}
+    from luplo._migrate import run_upgrade_head
 
-    if alembic_ini.exists():
-        result = subprocess.run(
-            ["alembic", "upgrade", "head"],
-            cwd=str(project_root),
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            typer.echo(f"Migration failed: {result.stderr}", err=True)
-            raise typer.Exit(1)
-        typer.echo("Migrations up to date.")
-    else:
-        typer.echo("Warning: alembic.ini not found, skipping migrations.", err=True)
+    try:
+        run_upgrade_head(db_url)
+    except Exception as exc:
+        typer.echo(f"Migration failed: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo("Migrations up to date.")
 
     async def _seed() -> None:
         pool = await create_pool(db_url)
@@ -1541,10 +1581,22 @@ def import_begin(
     pid = _cfg_project(project)
     aid = _cfg_actor(actor)
     lang = _cfg_language(dest_lang)
-    repo_root = Path.cwd()
+    repo_root = str(Path.cwd().resolve())
 
     from luplo.core.import_pipeline.begin import begin_import
     from luplo.core.import_pipeline.refusal import render_refusal_text
+    from luplo.core.import_pipeline.sources import make_source_file
+
+    # The CLI is the FS boundary: read content client-side and pass
+    # SourceFile objects inline. ``begin_import`` itself is FS-free so
+    # the same code path serves the cloud MCP wrapper.
+    def _build_source(p: Path | None) -> Any:
+        if p is None:
+            return None
+        return make_source_file(path=str(p.resolve()), content=p.read_text(encoding="utf-8"))
+
+    spec_src = _build_source(from_spec)
+    plan_src = _build_source(from_plan)
 
     async def _do() -> None:
         async with _backend() as b:
@@ -1552,8 +1604,8 @@ def import_begin(
                 backend=b,
                 project_id=pid,
                 actor_id=aid,
-                spec_path=from_spec,
-                plan_path=from_plan,
+                spec=spec_src,
+                plan=plan_src,
                 dest_lang=lang,
                 repo_root=repo_root,
                 force=force,

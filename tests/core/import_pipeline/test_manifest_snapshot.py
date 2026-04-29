@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from luplo.core.import_pipeline.begin import begin_import
+from luplo.core.import_pipeline.sources import make_source_file
 
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "import"
 SNAPS = Path(__file__).parents[2] / "snapshots" / "import"
@@ -55,17 +56,22 @@ async def test_manifest_snapshot(
     fresh_actor,
 ):
     case = FIXTURES / case_dir
-    spec = case / "spec.md" if has_spec else None
-    plan = case / "plan.md" if has_plan else None
+
+    def _src(rel: str) -> object:
+        p = case / rel
+        return make_source_file(path=str(p), content=p.read_text(encoding="utf-8"))
+
+    spec = _src("spec.md") if has_spec else None
+    plan = _src("plan.md") if has_plan else None
 
     result = await begin_import(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=plan,
+        spec=spec,  # type: ignore[arg-type]
+        plan=plan,  # type: ignore[arg-type]
         dest_lang="ko",
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
     actual = _normalise(result.manifest.model_dump())

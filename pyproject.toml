@@ -81,7 +81,9 @@ ignore = [
 # B008 does not understand framework defaults.
 "src/luplo/cli.py" = ["B008"]
 # Alembic migration SQL strings are intentionally inline.
-"db/migrations/*.py" = ["E501"]
+"src/luplo/_db_assets/migrations/*.py" = ["E501"]
+# Bundled alembic env.py: imports from the alembic package and uses module-level state.
+"src/luplo/_db_assets/env.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["luplo"]
@@ -94,7 +96,15 @@ typeCheckingMode = "strict"
 include = ["src"]
 # Optional extras that ship their own heavyweight deps (torch, pgvector).
 # Type-checking these would force CI to install the full vector stack.
-exclude = ["src/luplo/core/embedding/local.py"]
+#
+# ``_db_assets`` ships alembic migration scripts and the alembic env.py
+# inside the wheel (so ``lp migrate`` works from a PyPI install). These
+# files are runtime-glue for the alembic runner and follow the alembic
+# stub style — exclude from strict type-checking.
+exclude = [
+    "src/luplo/core/embedding/local.py",
+    "src/luplo/_db_assets",
+]
 reportUnnecessaryTypeIgnoreComment = "error"
 
 # ── Pytest ───────────────────────────────────────────────────────

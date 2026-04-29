@@ -2,7 +2,7 @@
 
 luplo is pre-1.0 and tracks its changes via Alembic migration ids that
 align with sprint versions. This page is the narrative layer on top of
-the migrations in `db/migrations/`.
+the migrations in `src/luplo/_db_assets/migrations/`.
 
 For the schema delta of any version, read the matching `0NNN_*.py` file
 in that directory.

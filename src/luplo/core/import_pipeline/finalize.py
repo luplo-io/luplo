@@ -49,8 +49,7 @@ async def finalize_import(
         raise ValueError(f"bundle_id {results.bundle_id!r} not found")
     if wu.project_id != project_id:
         raise ValueError(
-            f"bundle_id {results.bundle_id!r} belongs to a different project "
-            "(cross-project guard)"
+            f"bundle_id {results.bundle_id!r} belongs to a different project (cross-project guard)"
         )
     if wu.status != "in_progress":
         raise ValueError(

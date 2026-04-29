@@ -6,9 +6,16 @@ import pytest
 
 from luplo.core.import_pipeline.begin import begin_import
 from luplo.core.import_pipeline.finalize import finalize_import
+from luplo.core.import_pipeline.manifest import SourceFile
 from luplo.core.import_pipeline.results import ImportResults, ResultItem
+from luplo.core.import_pipeline.sources import make_source_file
 
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "import"
+
+
+def _src(rel_path: str) -> SourceFile:
+    p = FIXTURES / rel_path
+    return make_source_file(path=str(p), content=p.read_text(encoding="utf-8"))
 
 
 @pytest.mark.asyncio
@@ -17,10 +24,10 @@ async def test_finalize_creates_items_and_summarises(local_backend, fresh_projec
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=FIXTURES / "full-pair" / "spec.md",
-        plan_path=FIXTURES / "full-pair" / "plan.md",
+        spec=_src("full-pair/spec.md"),
+        plan=_src("full-pair/plan.md"),
         dest_lang="ko",
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
     assert begin.kind == "manifest"
@@ -77,10 +84,10 @@ async def test_finalize_strips_code_blocks_defense_in_depth(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=FIXTURES / "spec-only" / "spec.md",
-        plan_path=None,
+        spec=_src("spec-only/spec.md"),
+        plan=None,
         dest_lang=None,
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
     assert begin.manifest is not None
@@ -134,10 +141,10 @@ async def test_finalize_close_work_unit_flag(local_backend, fresh_project, fresh
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=FIXTURES / "spec-only" / "spec.md",
-        plan_path=None,
+        spec=_src("spec-only/spec.md"),
+        plan=None,
         dest_lang=None,
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
     assert begin.manifest is not None

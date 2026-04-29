@@ -1,61 +1,64 @@
-"""Read and hash source markdown files; compute the dedup key."""
+"""Construct ``SourceFile`` records from caller-supplied path + content.
+
+Files are *never* read by this module. The caller (``lp import begin``
+CLI, ``luplo_import_begin`` MCP wrapper, or the ``/lp-import`` slash
+command) reads markdown content client-side and passes it inline. This
+keeps the import pipeline filesystem-free on the server, which is what
+allows it to run on the multi-tenant cloud MCP where the server has no
+access to the user's working tree.
+
+The path is treated as a string identifier — used for display and for
+the ``context.source_paths`` audit field — and is never resolved or
+opened. Dedup is keyed off the sorted set of content hashes
+(``context.content_hash_set``), not paths, so the same content imported
+under different paths or from different working directories still
+collapses to a single bundle.
+"""
 
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 
 from luplo.core.import_pipeline.manifest import SourceFile
 
 
-def read_source_file(path: Path) -> SourceFile:
-    """Read a markdown source file and return a SourceFile.
+def make_source_file(*, path: str, content: str) -> SourceFile:
+    """Build a ``SourceFile`` from caller-provided path + UTF-8 content.
 
-    The path is resolved to its absolute form before reading. The returned
-    ``content_hash`` is the sha256 hex digest of the raw file bytes, and
-    ``raw_markdown`` is the UTF-8 decoded content.
-
-    Args:
-        path: Filesystem path to a markdown source file.
-
-    Returns:
-        A frozen ``SourceFile`` model with ``path``, ``content_hash`` and
-        ``raw_markdown`` populated.
-
-    Raises:
-        FileNotFoundError: When the file does not exist.
-    """
-    p = Path(path).resolve()
-    data = p.read_bytes()  # raises FileNotFoundError if missing
-    return SourceFile(
-        path=str(p),
-        content_hash=hashlib.sha256(data).hexdigest(),
-        raw_markdown=data.decode("utf-8"),
-    )
-
-
-def dedup_key(*, spec_path: Path | None, plan_path: Path | None) -> tuple[str, ...]:
-    """Compute the dedup key as a sorted tuple of absolute path strings.
-
-    Order-independent: ``dedup_key(spec_path=A, plan_path=B)`` equals
-    ``dedup_key(spec_path=B, plan_path=A)``. Single-source imports
-    yield a 1-tuple.
+    The hash is computed server-side from ``content`` so a malicious
+    caller cannot pre-fabricate a hash to bypass dedup.
 
     Args:
-        spec_path: Optional spec markdown path.
-        plan_path: Optional plan markdown path.
+        path: Caller-supplied identifier (filesystem path, URL, etc.).
+            Stored verbatim — the server does not parse or resolve it.
+        content: UTF-8 markdown content. Hashed (sha256) to populate
+            ``content_hash``.
 
     Returns:
-        A tuple of absolute path strings, sorted lexicographically.
+        A frozen :class:`SourceFile` with ``path``, ``content_hash``,
+        and ``raw_markdown`` populated.
+    """
+    h = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return SourceFile(path=path, content_hash=h, raw_markdown=content)
+
+
+def content_hash_set(sources: list[SourceFile]) -> tuple[str, ...]:
+    """Return the canonical dedup key for a sources bundle.
+
+    The key is the sorted tuple of sha256 hashes — order-independent,
+    path-independent. Two callers passing the same content under
+    different filenames or from different working directories produce
+    identical keys, so dedup ``find_existing_import_wu`` matches.
+
+    Args:
+        sources: Non-empty list of source files; order is irrelevant.
+
+    Returns:
+        Sorted tuple of content hash hex digests.
 
     Raises:
-        ValueError: When both ``spec_path`` and ``plan_path`` are ``None``.
+        ValueError: When ``sources`` is empty.
     """
-    parts: list[str] = []
-    if spec_path is not None:
-        parts.append(str(Path(spec_path).resolve()))
-    if plan_path is not None:
-        parts.append(str(Path(plan_path).resolve()))
-    if not parts:
-        raise ValueError("at least one of spec_path or plan_path must be provided")
-    return tuple(sorted(parts))
+    if not sources:
+        raise ValueError("at least one source file required")
+    return tuple(sorted(s.content_hash for s in sources))

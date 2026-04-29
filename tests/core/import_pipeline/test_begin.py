@@ -1,4 +1,9 @@
-"""Tests for the ``begin`` orchestration phase of lp import."""
+"""Tests for the ``begin`` orchestration phase of lp import.
+
+After the 0.13.0 FS-free refactor, ``begin_import`` accepts inline
+``SourceFile`` objects (path + content). These tests load fixture files
+client-side via ``read_text`` and pass content through ``make_source_file``.
+"""
 
 from __future__ import annotations
 
@@ -8,10 +13,18 @@ import pytest
 
 from luplo.core.backend.local import LocalBackend
 from luplo.core.import_pipeline.begin import begin_import
+from luplo.core.import_pipeline.manifest import SourceFile
+from luplo.core.import_pipeline.sources import make_source_file
 
 from .conftest import _FreshProject
 
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "import"
+
+
+def _src(rel_path: str) -> SourceFile:
+    """Build a SourceFile from a fixture path; reads happen here, not in begin_import."""
+    p = FIXTURES / rel_path
+    return make_source_file(path=str(p), content=p.read_text(encoding="utf-8"))
 
 
 @pytest.mark.asyncio
@@ -20,17 +33,17 @@ async def test_begin_full_pair_creates_wu_and_manifest(
     fresh_project: _FreshProject,
     fresh_actor: str,
 ) -> None:
-    spec = FIXTURES / "full-pair" / "spec.md"
-    plan = FIXTURES / "full-pair" / "plan.md"
+    spec = _src("full-pair/spec.md")
+    plan = _src("full-pair/plan.md")
 
     result = await begin_import(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=plan,
+        spec=spec,
+        plan=plan,
         dest_lang="ko",
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
 
@@ -51,16 +64,16 @@ async def test_begin_duplicate_refused(
     fresh_project: _FreshProject,
     fresh_actor: str,
 ) -> None:
-    spec = FIXTURES / "spec-only" / "spec.md"
+    spec = _src("spec-only/spec.md")
 
     first = await begin_import(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=None,
+        spec=spec,
+        plan=None,
         dest_lang=None,
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
     assert first.kind == "manifest"
@@ -69,10 +82,10 @@ async def test_begin_duplicate_refused(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=None,
+        spec=_src("spec-only/spec.md"),  # same content; different SourceFile instance
+        plan=None,
         dest_lang=None,
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
     assert second.kind == "refusal"
@@ -82,21 +95,61 @@ async def test_begin_duplicate_refused(
 
 
 @pytest.mark.asyncio
-async def test_begin_force_archives_old_creates_new(
+async def test_begin_dedup_invariant_under_path_change(
     local_backend: LocalBackend,
     fresh_project: _FreshProject,
     fresh_actor: str,
 ) -> None:
-    spec = FIXTURES / "spec-only" / "spec.md"
+    """Same content under a different path string still triggers refusal.
+
+    This is the cloud-MCP invariant: an agent on machine A and an agent
+    on machine B can pass different ``path`` identifiers, but identical
+    bytes collapse to one work_unit via ``content_hash_set``.
+    """
+    p = FIXTURES / "spec-only" / "spec.md"
+    content = p.read_text(encoding="utf-8")
+    first_src = make_source_file(path=str(p.resolve()), content=content)
+    second_src = make_source_file(path="/some/other/abs/spec.md", content=content)
 
     first = await begin_import(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=None,
+        spec=first_src,
+        plan=None,
         dest_lang=None,
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
+        force=False,
+    )
+    assert first.kind == "manifest"
+
+    second = await begin_import(
+        backend=local_backend,
+        project_id=fresh_project.id,
+        actor_id=fresh_actor,
+        spec=second_src,
+        plan=None,
+        dest_lang=None,
+        repo_root="/different/repo",
+        force=False,
+    )
+    assert second.kind == "refusal"
+
+
+@pytest.mark.asyncio
+async def test_begin_force_archives_old_creates_new(
+    local_backend: LocalBackend,
+    fresh_project: _FreshProject,
+    fresh_actor: str,
+) -> None:
+    first = await begin_import(
+        backend=local_backend,
+        project_id=fresh_project.id,
+        actor_id=fresh_actor,
+        spec=_src("spec-only/spec.md"),
+        plan=None,
+        dest_lang=None,
+        repo_root="/abs/repo",
         force=False,
     )
     assert first.manifest is not None
@@ -106,10 +159,10 @@ async def test_begin_force_archives_old_creates_new(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=None,
+        spec=_src("spec-only/spec.md"),
+        plan=None,
         dest_lang=None,
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=True,
     )
     assert forced.kind == "manifest"
@@ -128,16 +181,14 @@ async def test_begin_dest_lang_none_emits_notice(
     fresh_project: _FreshProject,
     fresh_actor: str,
 ) -> None:
-    spec = FIXTURES / "spec-only" / "spec.md"
-
     result = await begin_import(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=None,
+        spec=_src("spec-only/spec.md"),
+        plan=None,
         dest_lang=None,
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
 
@@ -152,16 +203,14 @@ async def test_begin_dest_lang_mismatch_refusal(
     fresh_project: _FreshProject,
     fresh_actor: str,
 ) -> None:
-    spec = FIXTURES / "spec-only" / "spec.md"
-
     first = await begin_import(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=None,
+        spec=_src("spec-only/spec.md"),
+        plan=None,
         dest_lang="ko",
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
     assert first.kind == "manifest"
@@ -170,10 +219,10 @@ async def test_begin_dest_lang_mismatch_refusal(
         backend=local_backend,
         project_id=fresh_project.id,
         actor_id=fresh_actor,
-        spec_path=spec,
-        plan_path=None,
+        spec=_src("spec-only/spec.md"),
+        plan=None,
         dest_lang="en",
-        repo_root=Path("/abs/repo"),
+        repo_root="/abs/repo",
         force=False,
     )
     assert second.kind == "refusal"
@@ -195,9 +244,9 @@ async def test_begin_no_sources_raises(
             backend=local_backend,
             project_id=fresh_project.id,
             actor_id=fresh_actor,
-            spec_path=None,
-            plan_path=None,
+            spec=None,
+            plan=None,
             dest_lang=None,
-            repo_root=Path("/abs/repo"),
+            repo_root="/abs/repo",
             force=False,
         )

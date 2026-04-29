@@ -11,6 +11,18 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+### Added
+- `lp migrate` CLI command — runs `alembic upgrade head` against `LUPLO_DB_URL` (or `--db-url`) without reading `.luplo`. Idempotent, safe to call from container boot scripts. Production deploys (e.g. `luplo-cloud/api/deploy/start.sh`) should invoke this directly before launching the application.
+- Alembic migration scripts (`db/migrations/`) and the alembic environment (`alembic.ini`, `env.py`, `script.py.mako`) are now packaged inside the wheel under `luplo/_db_assets/` and located at runtime via `importlib.resources`. Previously these lived at the repo root and `lp init` silently skipped migrations on PyPI installs because the path-walk-based locator only worked in editable / source layouts.
+- `RemoteBackend.archive_work_unit` and `RemoteBackend.find_existing_import_wu` are now fully implemented (were stubs in 0.12.0 raising `NotImplementedError`). `lp import` now works end-to-end against the remote (cloud) backend.
+
+### Changed
+- **Breaking (MCP only):** `luplo_import_begin` accepts a `sources: list[{kind, path, content}]` argument instead of `from_spec`/`from_plan` filesystem paths. The OSS `lp import begin` CLI and the `/lp-import` slash command transparently read files client-side and pass content inline, so user-facing UX is unchanged. The pipeline is now filesystem-free on the server, which is what allows it to run on the multi-tenant cloud MCP. Update any custom MCP wrappers in lock-step with a 0.13.0 server.
+- **Breaking (dedup semantics):** `lp import` dedup is now keyed off the sorted set of content hashes (`context.content_hash_set`) instead of source paths (`context.source_paths`). Same content imported under different paths or from different working directories now collapses to one work_unit — the invariant that makes cloud-mode dedup reliable. Migration `0007_work_units_context` ships the new GIN index `idx_work_units_context_content_hash_set` (replacing the prior `idx_work_units_context_source_paths`); dev DBs already on 0007 should `alembic downgrade -1 && alembic upgrade head` to swap the index. Source paths are still retained in `context.source_paths` for audit and display.
+- `actor` is now optional in `.luplo` for `backend.type = "remote"` mode — the SaaS server resolves the caller from the bearer token. CLI and MCP no longer error out when the `[actor]` section is missing in remote configs. Local mode unchanged (still required).
+- `RemoteBackend` no longer sends `actor_id` / `created_by` / `archived_by` in HTTP payloads. The server-side authority is the token; client-supplied actor fields are ignored (and rejected by the SaaS server to prevent impersonation).
+- `lp init` now delegates migration to `lp migrate` (which uses the wheel-bundled assets via `importlib.resources`). The previous `Path(__file__).parent.parent.parent` walk only worked in editable installs and silently skipped migrations on PyPI installs — this fixes that latent bug.
+
 ## [0.12.0] - 2026-04-29
 
 ### Added

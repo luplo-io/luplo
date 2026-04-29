@@ -208,5 +208,3 @@ async def test_impact_prefix_resolves_root(conn: Any, seed_project: str, seed_ac
 
     assert result.root.id == a
     assert [n.item.id for n in result.nodes] == [b]
-
-

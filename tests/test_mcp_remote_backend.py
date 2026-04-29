@@ -4,6 +4,7 @@ These tests don't need Postgres — we monkeypatch ``load_config`` to control
 the resolved ``LuploConfig`` and ``create_pool`` to avoid real DB dialing
 in the local-fallback case.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,7 +27,8 @@ async def test_remote_backend_selected_when_config_says_remote_and_token_set(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(
-        mcp_mod, "load_config",
+        mcp_mod,
+        "load_config",
         lambda: LuploConfig(backend_type="remote", server_url="https://api.luplo.io"),
     )
     monkeypatch.setenv("LUPLO_CLOUD_API_KEY", "lupk_deadbeef")
@@ -40,7 +42,8 @@ async def test_remote_backend_friendly_error_when_no_token(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(
-        mcp_mod, "load_config",
+        mcp_mod,
+        "load_config",
         lambda: LuploConfig(backend_type="remote", server_url="https://api.luplo.io"),
     )
     monkeypatch.delenv("LUPLO_CLOUD_API_KEY", raising=False)
@@ -75,7 +78,8 @@ async def test_remote_token_keyring_fallback_when_env_missing(
 ):
     """No env var, but keyring has the access token `lps login` would have written."""
     monkeypatch.setattr(
-        mcp_mod, "load_config",
+        mcp_mod,
+        "load_config",
         lambda: LuploConfig(backend_type="remote", server_url="https://api.luplo.io"),
     )
     monkeypatch.delenv("LUPLO_CLOUD_API_KEY", raising=False)
@@ -91,7 +95,8 @@ async def test_remote_token_env_wins_over_keyring(
 ):
     """Both populated → env takes priority (consistent with `lps mcp-config`)."""
     monkeypatch.setattr(
-        mcp_mod, "load_config",
+        mcp_mod,
+        "load_config",
         lambda: LuploConfig(backend_type="remote", server_url="https://api.luplo.io"),
     )
     monkeypatch.setenv("LUPLO_CLOUD_API_KEY", "lupk_envwins")
@@ -122,7 +127,8 @@ async def test_remote_with_blank_server_url_falls_back_to_local(
     """Belt-and-suspenders: ``type = "remote"`` without ``server_url`` shouldn't
     pretend it's remote — fall through to local rather than throw."""
     monkeypatch.setattr(
-        mcp_mod, "load_config",
+        mcp_mod,
+        "load_config",
         lambda: LuploConfig(backend_type="remote", server_url=""),
     )
 

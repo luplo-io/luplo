@@ -210,22 +210,14 @@ class RemoteBackend:
         archived_by: str,
         replaced_by_wu_id: str,
     ) -> WorkUnit:
+        # ``archived_by`` is intentionally NOT sent in the payload — the
+        # SaaS server resolves the actor from the bearer token and ignores
+        # any client-supplied actor field. We keep the parameter in the
+        # signature so the local-mode caller and the protocol stay aligned.
         resp = await self._client.post(
             f"/work-units/{id}/archive",
-            json={
-                "archived_by": archived_by,
-                "replaced_by_wu_id": replaced_by_wu_id,
-            },
+            json={"replaced_by_wu_id": replaced_by_wu_id},
         )
-        # 405 is the canonical "route exists but doesn't accept POST"
-        # signal — older luplo servers without /archive return this.
-        # 404 is ambiguous on its own but here means "wu_id not found"
-        # (a missing route would be 405 since /work-units/{id} exists for
-        # other verbs); map it to ValueError to match LocalBackend.
-        if resp.status_code == 405:
-            raise NotImplementedError(
-                "remote backend does not yet support archive — use local mode for force-import"
-            )
         if resp.status_code == 404:
             raise ValueError(f"work_unit not found: {id}")
         resp.raise_for_status()
@@ -235,11 +227,27 @@ class RemoteBackend:
         self,
         *,
         project_id: str,
-        source_paths: tuple[str, ...],
+        content_hash_set: tuple[str, ...],
     ) -> WorkUnit | None:
-        raise NotImplementedError(
-            "remote backend does not yet support import dedup — use local mode"
+        """Look up an existing import work_unit by content hash set.
+
+        Sends ``project_id`` plus a repeated ``content_hash`` query
+        parameter (sorted client-side for determinism). 404 maps to
+        ``None`` so callers can treat "no match" the same way local
+        mode does.
+        """
+        # httpx accepts a tuple of (key, value) tuples for repeated query
+        # keys; the explicit tuple type below appeases pyright's invariant-
+        # list complaint while preserving runtime semantics.
+        params: tuple[tuple[str, str], ...] = (
+            ("project_id", project_id),
+            *(("content_hash", h) for h in sorted(content_hash_set)),
         )
+        resp = await self._client.get("/work-units/find-existing-import", params=params)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return _parse_work_unit(resp.json())
 
     # ── History ──────────────────────────────────────────────────
 
