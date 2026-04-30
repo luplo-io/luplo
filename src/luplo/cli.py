@@ -45,7 +45,7 @@ app = typer.Typer(
 
 
 @app.callback()
-def _root(
+def _root(  # pyright: ignore[reportUnusedFunction]
     version: bool = typer.Option(
         False,
         "--version",

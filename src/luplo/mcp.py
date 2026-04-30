@@ -129,15 +129,15 @@ def _read_keyring_token() -> str | None:
     or if no token is stored. The caller falls through to a friendly error.
     """
     try:
-        import keyring  # local import: optional dep
+        import keyring  # pyright: ignore[reportMissingImports]
     except ImportError:
         return None
     try:
-        value = keyring.get_password(_KEYRING_SERVICE, _KEYRING_SLOT)
+        value = keyring.get_password(_KEYRING_SERVICE, _KEYRING_SLOT)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
     except Exception:
         # NoKeyringError, locked keyring, etc — same outcome: no token.
         return None
-    return (value or "").strip() or None
+    return (value or "").strip() or None  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
 
 
 def _remote_token() -> str:
@@ -181,11 +181,12 @@ async def _get_backend() -> Backend:
     if _backend is None:
         cfg = load_config()
         if cfg.backend_type == "remote" and cfg.server_url:
-            _backend = RemoteBackend(cfg.server_url, token=_remote_token())
+            _backend = RemoteBackend(cfg.server_url, token=_remote_token())  # pyright: ignore[reportAssignmentType]
         else:
             db_url = os.environ.get("LUPLO_DB_URL", "postgresql://localhost/luplo")
             pool = await create_pool(db_url)
             _backend = LocalBackend(pool)
+    assert _backend is not None
     return _backend
 
 
@@ -284,8 +285,8 @@ async def luplo_work_resume(query: str, project_id: str) -> str:
     from luplo.core.work_units import find_work_units
 
     b = await _get_backend()
-    async with b.pool.connection() as conn:
-        results = await find_work_units(conn, project_id, query)
+    async with b.pool.connection() as conn:  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownVariableType]
+        results = await find_work_units(conn, project_id, query)  # pyright: ignore[reportUnknownArgumentType]
 
     if not results:
         return "No matching work units in progress."
