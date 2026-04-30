@@ -72,10 +72,19 @@ async def mcp_backend(db_url: str) -> Any:
     Environment setup, singleton reset, and seed inserts all happen once so
     every test reuses the same pool. The pool *must* be closed at the end
     of the module so the session-scoped DB fixture can drop the database.
+
+    A hermetic ``load_config`` is patched in: without this the test picks
+    up the developer's ``.luplo`` from the working tree, which on this
+    machine is in remote mode and would route ``_get_backend`` at the
+    cloud (failing with ``_RemoteAuthMissing``).
     """
     import os
 
+    from luplo.config import LuploConfig
+
     os.environ["LUPLO_DB_URL"] = db_url
+    _orig_load_config = mcp_mod.load_config
+    mcp_mod.load_config = lambda: LuploConfig()
     mcp_mod._backend = None
 
     with psycopg.connect(db_url) as conn:
@@ -96,6 +105,7 @@ async def mcp_backend(db_url: str) -> Any:
         if mcp_mod._backend is not None:
             await mcp_mod._backend.pool.close()
             mcp_mod._backend = None
+        mcp_mod.load_config = _orig_load_config
 
 
 def _wu_id_from_text(text: str) -> str:

@@ -260,13 +260,13 @@ class LocalBackend:
         self,
         *,
         project_id: str,
-        source_paths: tuple[str, ...],
+        content_hash_set: tuple[str, ...],
     ) -> WorkUnit | None:
         async with self.pool.connection() as conn:
             return await work_units.find_existing_import_wu(
                 conn,
                 project_id=project_id,
-                source_paths=source_paths,
+                content_hash_set=content_hash_set,
             )
 
     # ── Systems ──────────────────────────────────────────────────

@@ -8,18 +8,17 @@ luplo is a CLI + MCP server for long-term memory of engineering decisions. It tr
 
 ## Architecture
 
-Three interfaces, one core:
+Two interfaces, one core:
 - **CLI** (`src/luplo/cli.py`) — typer, human-facing
 - **MCP server** (`src/luplo/mcp.py`) — stdio, Claude Desktop/Code integration
-- **HTTP server** (`src/luplo/server/`) — FastAPI, Remote mode only (`luplo[server]` extras)
 
-All three call into `src/luplo/core/` which abstracts Local (direct PG) vs Remote (HTTP) via a Backend protocol.
+Both call into `src/luplo/core/` which abstracts Local (direct PG) vs Remote (HTTP client) via a Backend protocol. The HTTP server that Remote mode talks to lives outside this repo (hosted at `api.luplo.io` or self-hosted); only the client adapter (`core/backend/remote.py`) ships here.
 
 ```
 src/luplo/
 ├── core/
 │   ├── db.py            # connection, engine
-│   ├── backend/         # Local / Remote protocol
+│   ├── backend/         # Local (direct PG) / Remote (HTTP client) protocol
 │   ├── items.py         # CRUD + supersedes chain + soft delete
 │   ├── work_units.py    # open/resume/close
 │   ├── search/          # tsquery + glossary expansion + vector ranking
@@ -31,12 +30,7 @@ src/luplo/
 │   ├── history.py       # items_history
 │   └── audit.py         # audit_log
 ├── cli.py
-├── mcp.py
-└── server/
-    ├── app.py
-    ├── config.py
-    ├── deps.py
-    └── routes/
+└── mcp.py
 ```
 
 ## Build, test & development
@@ -44,7 +38,6 @@ src/luplo/
 ```bash
 # Install
 uv sync                                     # core deps
-uv sync --extra server                      # with FastAPI
 uv sync --extra vector-local                # with sentence-transformers
 
 # Database
@@ -71,17 +64,17 @@ Core 6: `projects`, `actors`, `systems`, `items`, `links`, `work_units`
 Sync 3: `items_history`, `audit_log`, `sync_jobs`
 Glossary 3: `glossary_groups`, `glossary_terms`, `glossary_rejections`
 
-Migrations live in `db/migrations/`. Config in `alembic.ini`. Env override: `LUPLO_DB_URL`.
+Migrations live in `src/luplo/_db_assets/migrations/` (shipped inside the wheel — see `_migrate.py` for the runtime locator). Config in `alembic.ini` (repo root, dev convenience). Env override: `LUPLO_DB_URL`. Production deploys should run `lp migrate`, which reads only env / `--db-url` and never touches `.luplo`.
 
 ## Key design decisions
 
-- **Two modes**: Local (direct PG, single-user) and Remote (FastAPI HTTP adapter, no built-in auth — wrap it). `.luplo` config file.
+- **Two modes**: Local (direct PG, single-user) and Remote (HTTP client to an out-of-tree luplo server — `api.luplo.io` or self-hosted). Bearer auth via `LUPLO_CLOUD_API_KEY` or keyring. `.luplo` config file.
 - **Embedding default is null backend** — no Python ML deps by default. `vector-local` extras for sentence-transformers.
 - **Vector is ranking only, never primary search.** tsquery does retrieval, vector reranks. Honesty > coverage.
 - **Glossary is strict-first** — deterministic normalization → strict LLM matching → human curation queue. No aggressive clustering.
 - **Soft delete on items** — `deleted_at` field, rows never physically removed. Edits create new rows via `supersedes_id`.
 - **work_units** replace sessions — user-facing intent grouping, spans multiple Claude sessions. A→B handoff via `status='in_progress'`.
-- **Worker**: `lp worker start` (Local) or server lifespan (Remote). PG LISTEN/NOTIFY for sync_jobs + glossary term candidates.
+- **Worker**: `lp worker start` runs the Local-mode background worker; PG LISTEN/NOTIFY for sync_jobs + glossary term candidates. Remote mode delegates this to the upstream server.
 
 ## Code standards
 

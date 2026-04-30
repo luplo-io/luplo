@@ -9,9 +9,13 @@ from sqlalchemy import create_engine
 
 config = context.config
 
-# Allow override via env var.  Normalise to psycopg v3 dialect so callers can
-# pass a plain ``postgresql://`` URL without worrying about the SQLAlchemy driver.
-db_url = os.environ.get("LUPLO_DB_URL") or config.get_main_option("sqlalchemy.url")
+# Prefer the URL set on the alembic Config (e.g. via ``_migrate.build_config``)
+# so programmatic callers can target a specific database. Fall back to the
+# ``LUPLO_DB_URL`` env var only when the Config has none — that path is what
+# ``alembic upgrade head`` uses when the user runs the bare CLI.
+# Normalise to psycopg v3 dialect so callers can pass a plain ``postgresql://``
+# URL without worrying about the SQLAlchemy driver.
+db_url = config.get_main_option("sqlalchemy.url") or os.environ.get("LUPLO_DB_URL")
 if db_url and db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 

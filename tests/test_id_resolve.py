@@ -264,9 +264,7 @@ async def test_resolver_accepts_non_uuid_exact_match(
 
 
 @pytest.mark.asyncio
-async def test_resolver_invalid_when_no_exact_and_not_hex(
-    conn: object, seed_project: str
-) -> None:
+async def test_resolver_invalid_when_no_exact_and_not_hex(conn: object, seed_project: str) -> None:
     """If no exact row matches and the input isn't a hex prefix either,
     the resolver still raises InvalidIdFormatError — preserves the
     existing not-found-vs-bad-format distinction for callers."""

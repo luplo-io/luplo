@@ -110,9 +110,7 @@ async def search(
     )
 
     if use_vectors and embedding_backend is not None:
-        candidates = await _vector_rerank(
-            conn, rerank_query, candidates, embedding_backend, limit
-        )
+        candidates = await _vector_rerank(conn, rerank_query, candidates, embedding_backend, limit)
     else:
         candidates = candidates[:limit]
 

@@ -308,14 +308,19 @@ class Backend(Protocol):
         self,
         *,
         project_id: str,
-        source_paths: tuple[str, ...],
+        content_hash_set: tuple[str, ...],
     ) -> WorkUnit | None:
-        """Find a non-archived import work unit whose source-path set matches.
+        """Find a non-archived import work unit whose content matches.
 
         Used by ``lp import begin`` for dedup: returns the most recently
         created work unit in the project whose ``context.kind == 'import'``
-        and whose ``context.source_paths`` (compared as a sorted set) equal
-        the given paths.  Archived and abandoned work units are excluded.
+        and whose ``context.content_hash_set`` (sorted) equals the given
+        hashes. Archived and abandoned work units are excluded.
+
+        The dedup key is content-hash-based (not path-based) so the same
+        bundle imported under different paths or from different working
+        directories collapses to one work_unit. Both ``LocalBackend`` and
+        the cloud (``RemoteBackend`` → SaaS) match on this invariant.
 
         Returns ``None`` when no match exists.
         """

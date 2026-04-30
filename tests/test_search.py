@@ -330,8 +330,10 @@ async def test_search_raw_tsquery_bypasses_parser_and_glossary(
         tsquery="vendor & restock",  # type: ignore[arg-type]
     )
     assert len(results) >= 1
-    assert any("restock" in r.item.title.lower() or "restock" in (r.item.body or "").lower()
-               for r in results)
+    assert any(
+        "restock" in r.item.title.lower() or "restock" in (r.item.body or "").lower()
+        for r in results
+    )
 
 
 @pytest.mark.asyncio

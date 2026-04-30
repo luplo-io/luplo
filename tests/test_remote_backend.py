@@ -352,16 +352,27 @@ async def test_close_work_unit() -> None:
 
 
 @pytest.mark.asyncio
-async def test_archive_work_unit_405_raises_not_implemented() -> None:
-    """405 = route exists but doesn't accept POST → server lacks archive."""
+async def test_archive_work_unit_returns_archived_wu() -> None:
+    """200 path: server returns the archived WorkUnit JSON."""
 
     def handle(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
         assert request.url.path == "/work-units/w1/archive"
-        return httpx.Response(405, json={"detail": "method not allowed"})
+        # Body must NOT carry actor_id — server resolves caller from token.
+        body = request.read().decode()
+        assert "archived_by" not in body
+        assert "replaced_by_wu_id" in body
+        wu = _wu_payload("w1", "p1", "Old WU")
+        wu["status"] = "archived"
+        wu["closed_at"] = _iso(_NOW)
+        wu["closed_by"] = "a1"
+        wu["context"] = {"replaced_by": "w2"}
+        return httpx.Response(200, json=wu)
 
     b = _make_backend(httpx.MockTransport(handle))
-    with pytest.raises(NotImplementedError):
-        await b.archive_work_unit(id="w1", archived_by="a1", replaced_by_wu_id="w2")
+    archived = await b.archive_work_unit(id="w1", archived_by="a1", replaced_by_wu_id="w2")
+    assert archived.status == "archived"
+    assert archived.context.get("replaced_by") == "w2"
     await b.close()
 
 
@@ -376,6 +387,45 @@ async def test_archive_work_unit_404_raises_value_error() -> None:
     b = _make_backend(httpx.MockTransport(handle))
     with pytest.raises(ValueError, match="work_unit not found"):
         await b.archive_work_unit(id="ghost", archived_by="a1", replaced_by_wu_id="w2")
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_find_existing_import_wu_match() -> None:
+    """200 path: server returns the matching import work_unit."""
+
+    seen_params: list[tuple[str, str]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/work-units/find-existing-import"
+        seen_params.extend(request.url.params.multi_items())
+        return httpx.Response(200, json=_wu_payload("wu-import", "p1", "Import bundle"))
+
+    b = _make_backend(httpx.MockTransport(handle))
+    result = await b.find_existing_import_wu(
+        project_id="p1", content_hash_set=("hash-b", "hash-a")
+    )
+    assert result is not None
+    assert result.id == "wu-import"
+    # Hashes are sorted on the wire so the server can index lookups deterministically.
+    hash_params = [v for k, v in seen_params if k == "content_hash"]
+    assert hash_params == sorted(hash_params)
+    assert ("project_id", "p1") in seen_params
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_find_existing_import_wu_404_returns_none() -> None:
+    """404 = no matching bundle; mirror LocalBackend's None return."""
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/work-units/find-existing-import"
+        return httpx.Response(404, json={"detail": "not found"})
+
+    b = _make_backend(httpx.MockTransport(handle))
+    result = await b.find_existing_import_wu(project_id="p1", content_hash_set=("h",))
+    assert result is None
     await b.close()
 
 

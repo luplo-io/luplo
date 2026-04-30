@@ -1,14 +1,17 @@
 """Phase 1 — open work_unit, build manifest, return to caller.
 
 luplo's job ends after returning the manifest. The agent owns extraction
-and verification; finalize accepts the results back.
+and verification; finalize accepts the results back. The pipeline is
+filesystem-free: callers (CLI, MCP, slash command) supply file content
+inline as :class:`SourceFile` objects via
+:func:`luplo.core.import_pipeline.sources.make_source_file`. See that
+module for the rationale.
 """
 
 from __future__ import annotations
 
 import uuid as uuidlib
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from luplo.core.backend.protocol import Backend
@@ -16,9 +19,10 @@ from luplo.core.import_pipeline.manifest import (
     ImportManifest,
     ManifestSources,
     ProtocolBlock,
+    SourceFile,
 )
 from luplo.core.import_pipeline.refusal import build_refusal
-from luplo.core.import_pipeline.sources import dedup_key, read_source_file
+from luplo.core.import_pipeline.sources import content_hash_set
 
 # Rules block injected into every manifest. These are the agent-side
 # instructions that govern extraction + verification. Wording locked
@@ -69,16 +73,17 @@ async def begin_import(
     backend: Backend,
     project_id: str,
     actor_id: str,
-    spec_path: Path | None,
-    plan_path: Path | None,
+    spec: SourceFile | None,
+    plan: SourceFile | None,
     dest_lang: str | None,
-    repo_root: Path,
+    repo_root: str,
     force: bool,
 ) -> BeginResult:
     """Open a new import bundle (work_unit + manifest) and return to caller.
 
-    Reads the source markdown files, dedups against any prior non-archived
-    import work_unit for the same path-set, and either:
+    Dedups against any prior non-archived import work_unit whose stored
+    ``content_hash_set`` matches the caller's. Either:
+
     - returns a refusal payload when a duplicate exists and ``force`` is False,
     - archives the prior work_unit (when ``force`` is True) and opens a new one,
     - or simply opens a new work_unit when nothing prior exists.
@@ -87,59 +92,52 @@ async def begin_import(
         backend: The luplo ``Backend`` (Local or Remote).
         project_id: Project owning the import.
         actor_id: Caller's actor UUID; recorded as the work_unit creator.
-        spec_path: Optional path to the spec markdown.
-        plan_path: Optional path to the plan markdown.
+        spec: Optional spec :class:`SourceFile` (path + content; caller
+            already read the file).
+        plan: Optional plan :class:`SourceFile` (path + content; caller
+            already read the file).
         dest_lang: ISO 639-1 target language, or ``None`` to preserve source.
-        repo_root: Project root used by the agent for code verification.
-        force: When True, archive any prior import for the same source set.
+        repo_root: Project root path string. Stored verbatim in the manifest
+            for the agent's later use during code verification; the server
+            never resolves or opens it.
+        force: When True, archive any prior import for the same content set.
 
     Returns:
         A ``BeginResult`` carrying either a manifest or a refusal payload.
 
     Raises:
-        ValueError: When neither ``spec_path`` nor ``plan_path`` is provided.
+        ValueError: When neither ``spec`` nor ``plan`` is provided.
     """
-    if spec_path is None and plan_path is None:
-        raise ValueError("at least one of spec_path or plan_path must be provided")
+    if spec is None and plan is None:
+        raise ValueError("at least one of spec or plan must be provided")
 
-    spec_src = read_source_file(spec_path) if spec_path else None
-    plan_src = read_source_file(plan_path) if plan_path else None
+    sources = [s for s in (spec, plan) if s is not None]
+    hash_set = content_hash_set(sources)
 
-    paths = dedup_key(spec_path=spec_path, plan_path=plan_path)
-
-    existing = await backend.find_existing_import_wu(project_id=project_id, source_paths=paths)
+    existing = await backend.find_existing_import_wu(
+        project_id=project_id, content_hash_set=hash_set
+    )
 
     if existing is not None and not force:
-        # 3-layer refusal — distinguish "exact rerun" vs "language mismatch"
-        # vs "content changed".
-        prior_hashes: dict[str, str] = existing.context.get("content_hashes", {})
-        current_hashes: dict[str, str] = {}
-        if spec_src is not None:
-            current_hashes[spec_src.path] = spec_src.content_hash
-        if plan_src is not None:
-            current_hashes[plan_src.path] = plan_src.content_hash
-
+        # 3-layer refusal — distinguish "exact rerun" (same content + same
+        # dest_lang) vs "language mismatch" (same content + different lang).
+        # If we got here the hash sets matched so content is byte-identical
+        # by definition; the only remaining axis is dest_lang.
         prior_lang = existing.context.get("dest_lang")
 
-        if prior_hashes == current_hashes and prior_lang == dest_lang:
+        if prior_lang == dest_lang:
             why = (
                 f"spec/plan pair already imported as work_unit {existing.id} "
                 f"(created at {existing.created_at.isoformat()}). "
                 "Content is byte-identical to the prior import."
             )
-        elif prior_hashes == current_hashes:
+        else:
             why = (
                 f"spec/plan pair already imported as work_unit {existing.id} "
                 f"with dest_lang={prior_lang!r}, "
                 f"but the current call requests dest_lang={dest_lang!r}. "
                 "Content is byte-identical; only the target language differs. "
                 "Forcing will archive the prior bundle and re-extract items in the new language."
-            )
-        else:
-            why = (
-                f"spec/plan pair already imported as work_unit {existing.id}, "
-                "but content has changed since the prior import. "
-                "Review the diff before forcing a replacement."
             )
         refusal = build_refusal(
             why=why,
@@ -160,15 +158,15 @@ async def begin_import(
             replaced_by_wu_id=new_wu_id,
         )
 
-    title = _derive_title(spec_path, plan_path)
+    paths = [s.path for s in sources]
+    title = _derive_title(spec, plan)
     context: dict[str, Any] = {
         "kind": "import",
-        "source_paths": list(paths),
-        "content_hashes": {
-            **({spec_src.path: spec_src.content_hash} if spec_src else {}),
-            **({plan_src.path: plan_src.content_hash} if plan_src else {}),
-        },
+        "content_hash_set": list(hash_set),  # canonical dedup key
+        "source_paths": paths,  # secondary, audit/display only
+        "content_hashes": {s.path: s.content_hash for s in sources},
         "dest_lang": dest_lang,
+        "repo_root": repo_root,
     }
     if existing is not None and force:
         context["replaces"] = existing.id
@@ -193,17 +191,20 @@ async def begin_import(
     manifest = ImportManifest(
         bundle_id=new_wu_id,
         dest_lang=dest_lang,
-        repo_root=str(Path(repo_root).resolve()),
-        sources=ManifestSources(spec=spec_src, plan=plan_src),
-        protocol=ProtocolBlock(
-            rules=_PROTOCOL_RULES, verification=_VERIFICATION, notices=notices
-        ),
+        repo_root=repo_root,
+        sources=ManifestSources(spec=spec, plan=plan),
+        protocol=ProtocolBlock(rules=_PROTOCOL_RULES, verification=_VERIFICATION, notices=notices),
     )
     return BeginResult(kind="manifest", manifest=manifest)
 
 
-def _derive_title(spec_path: Path | None, plan_path: Path | None) -> str:
+def _derive_title(spec: SourceFile | None, plan: SourceFile | None) -> str:
     """Build a short human-readable work_unit title from the source filenames."""
-    primary = spec_path or plan_path
-    name = primary.stem if primary is not None else "import"
+    primary = spec or plan
+    if primary is None:
+        return "Import: bundle"
+    # ``path`` is a caller-supplied string; basename without extension is good enough.
+    name = primary.path.rsplit("/", 1)[-1]
+    if "." in name:
+        name = name.rsplit(".", 1)[0]
     return f"Import: {name}"

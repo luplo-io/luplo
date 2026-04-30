@@ -36,7 +36,7 @@ jobs:
       - name: Install Python 3.12
         run: uv python install 3.12
       - name: Sync dependencies
-        run: uv sync --extra server --extra dev
+        run: uv sync --extra dev
       - name: Create database
         run: psql -h localhost -U postgres -c "CREATE DATABASE luplo;"
       - name: Run migrations
@@ -78,6 +78,6 @@ jobs:
       - name: Install Python 3.12
         run: uv python install 3.12
       - name: Sync all dependencies
-        run: uv sync --extra server --extra dev
+        run: uv sync --extra dev
       - name: pyright
         run: uv run pyright

@@ -63,20 +63,40 @@ Resolution order for the import target language:
 
 ## Re-running with the same sources
 
-By default, `lp import begin` refuses if the same spec/plan paths have
-been imported before. The refusal includes the prior `work_unit_id` and
-the override flag (`--force`). Forcing archives the prior work_unit and
-creates a fresh one — the prior items remain accessible via search but
-are tied to the archived bundle.
+By default, `lp import begin` refuses if the same content has been
+imported before. **Dedup is keyed on the sorted set of content
+hashes** (`context.content_hash_set`), not on paths — so the same
+markdown imported under different filenames or from different
+working directories still triggers refusal. This invariant is what
+makes the import pipeline cwd-independent and cloud-friendly: the
+SaaS server has no concept of the agent's filesystem layout.
+
+The refusal includes the prior `work_unit_id` and the override flag
+(`--force`). Forcing archives the prior work_unit and creates a fresh
+one — the prior items remain accessible via search but are tied to
+the archived bundle.
 
 Don't auto-retry refusals from inside an agent. Surface the refusal text
 to the user and ask before forcing.
 
+## Remote (cloud) mode
+
+`lp import` works against the SaaS backend the same way it does against
+a local Postgres: configure `.luplo` with `backend.type = "remote"` and
+issue an API key (or run `lps login`). The CLI reads files locally and
+sends content over HTTP to the cloud's `POST /work-units` and
+`GET /work-units/find-existing-import` endpoints, which are filesystem-free.
+
+Actor identity comes from the bearer token; the `[actor]` section in
+`.luplo` is optional in remote mode (the server resolves the caller
+from its API key or JWT and ignores any client-supplied actor field).
+
 ## Output shape
 
 A successful import produces:
-- 1 `work_unit` titled `Import: <stem>` with `context.kind = "import"` and
-  `context.source_paths` for dedup
+- 1 `work_unit` titled `Import: <stem>` with `context.kind = "import"`,
+  `context.content_hash_set` for dedup, and `context.source_paths` for
+  audit / display
 - N `decision` items — major design choices captured from the spec
 - M `knowledge` items — gotchas, invariants, conventions worth remembering
 - 1-2 `document` items — full translated body of spec/plan (code blocks

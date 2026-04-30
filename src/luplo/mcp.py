@@ -31,6 +31,7 @@ from luplo.core.backend.local import LocalBackend
 from luplo.core.backend.protocol import Backend
 from luplo.core.backend.remote import RemoteBackend
 from luplo.core.db import create_pool
+from luplo.core.import_pipeline.manifest import SourceFile
 from luplo.core.models import Item, ItemCreate
 
 mcp = FastMCP(
@@ -128,15 +129,15 @@ def _read_keyring_token() -> str | None:
     or if no token is stored. The caller falls through to a friendly error.
     """
     try:
-        import keyring  # local import: optional dep
+        import keyring  # pyright: ignore[reportMissingImports]
     except ImportError:
         return None
     try:
-        value = keyring.get_password(_KEYRING_SERVICE, _KEYRING_SLOT)
+        value = keyring.get_password(_KEYRING_SERVICE, _KEYRING_SLOT)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
     except Exception:
         # NoKeyringError, locked keyring, etc — same outcome: no token.
         return None
-    return (value or "").strip() or None
+    return (value or "").strip() or None  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
 
 
 def _remote_token() -> str:
@@ -180,11 +181,12 @@ async def _get_backend() -> Backend:
     if _backend is None:
         cfg = load_config()
         if cfg.backend_type == "remote" and cfg.server_url:
-            _backend = RemoteBackend(cfg.server_url, token=_remote_token())
+            _backend = RemoteBackend(cfg.server_url, token=_remote_token())  # pyright: ignore[reportAssignmentType]
         else:
             db_url = os.environ.get("LUPLO_DB_URL", "postgresql://localhost/luplo")
             pool = await create_pool(db_url)
             _backend = LocalBackend(pool)
+    assert _backend is not None
     return _backend
 
 
@@ -195,12 +197,19 @@ def _resolve_actor(actor_id: str) -> str:
     configured default" — after 0002 migration actors.id is a UUID, so a
     non-UUID fallback must resolve to the local ``.luplo`` actor.id
     before hitting the DB.
+
+    In ``backend.type = "remote"`` mode the SaaS server resolves the
+    caller from its bearer token, so an unconfigured actor is *not* an
+    error here — we return an empty string and let ``RemoteBackend``
+    omit the actor field from outgoing payloads.
     """
     if actor_id and actor_id != "claude":
         return actor_id
     cfg = load_config()
     if cfg.actor_id:
         return cfg.actor_id
+    if cfg.backend_type == "remote":
+        return ""
     raise ValueError("No actor_id configured. Set LUPLO_ACTOR_ID or run `lp init`.")
 
 
@@ -276,8 +285,8 @@ async def luplo_work_resume(query: str, project_id: str) -> str:
     from luplo.core.work_units import find_work_units
 
     b = await _get_backend()
-    async with b.pool.connection() as conn:
-        results = await find_work_units(conn, project_id, query)
+    async with b.pool.connection() as conn:  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownVariableType]
+        results = await find_work_units(conn, project_id, query)  # pyright: ignore[reportUnknownArgumentType]
 
     if not results:
         return "No matching work units in progress."
@@ -1073,14 +1082,19 @@ async def luplo_save_decisions(
 @mcp.tool()
 async def luplo_import_begin(
     project_id: str,
-    from_spec: str | None = None,
-    from_plan: str | None = None,
+    sources: list[dict[str, str]],
     dest_lang: str | None = None,
     force: bool = False,
-    repo_root: str | None = None,
+    repo_root: str = "",
     actor_id: str = "claude",
 ) -> dict[str, Any]:
-    """Stage a new import bundle from spec/plan markdown files.
+    """Stage a new import bundle from spec/plan markdown content.
+
+    The agent reads the spec/plan markdown files **before** invoking this
+    tool and passes their contents inline via ``sources``. This keeps the
+    pipeline filesystem-free on the server, which is what allows it to
+    run on the multi-tenant cloud MCP. Local-mode invocations follow the
+    same pattern for consistency.
 
     Returns one of two response shapes:
 
@@ -1094,8 +1108,6 @@ async def luplo_import_begin(
       The agent MUST surface the refusal to the user and explicitly ask
       before retrying with ``force=true``. Do not silently retry.
 
-    At least one of *from_spec* / *from_plan* is required.
-
     Rules the agent must enforce on extracted items:
 
     - Chunk meaningfully (decisions/knowledge granularity, not
@@ -1106,39 +1118,65 @@ async def luplo_import_begin(
 
     Args:
         project_id: Project owning the bundle.
-        from_spec: Optional path to the spec markdown file.
-        from_plan: Optional path to the plan markdown file.
+        sources: Non-empty list of source files. Each entry is a dict
+            with three string keys:
+
+            * ``kind``: ``"spec"`` or ``"plan"``.
+            * ``path``: caller-supplied identifier (filesystem path or
+              other label). Stored verbatim; never opened by the server.
+            * ``content``: the file's UTF-8 markdown content.
+
+            At most one ``"spec"`` and one ``"plan"`` may be supplied.
         dest_lang: ISO 639-1 target language. ``None`` preserves source
             language verbatim.
-        force: When True, archive any prior import for the same source
+        force: When True, archive any prior import for the same content
             set and stage a fresh bundle. Default False — duplicates
             return a refusal payload.
-        repo_root: Absolute path the agent should use as the repository
-            root for code verification. Defaults to the server's CWD.
+        repo_root: Repository root path the agent will use during code
+            verification. Stored verbatim in the manifest; the server
+            never resolves or opens it. Empty string is allowed when
+            verification will run elsewhere (e.g. the cloud).
         actor_id: UUID of the actor opening the bundle. The literal
-            ``"claude"`` resolves to the configured ``.luplo`` actor.
+            ``"claude"`` resolves to the configured ``.luplo`` actor in
+            local mode; in remote/cloud mode the server resolves the
+            actor from the bearer token regardless.
 
     Returns:
         Either a manifest dict (with ``bundle_id``, ``dest_lang``,
         ``sources``, ``protocol`` keys) or a refusal dict with
         ``status="refused"`` plus ``why`` / ``override`` / ``agent_hint``.
     """
-    from pathlib import Path
-
     from luplo.core.import_pipeline.begin import begin_import
+    from luplo.core.import_pipeline.sources import make_source_file
 
     aid = _resolve_actor(actor_id)
-    rr = Path(repo_root) if repo_root else Path.cwd()
+
+    spec: SourceFile | None = None
+    plan: SourceFile | None = None
+    for s in sources:
+        kind = s.get("kind")
+        path = s.get("path", "")
+        content = s.get("content", "")
+        if kind == "spec":
+            if spec is not None:
+                raise ValueError("at most one source with kind='spec' is allowed")
+            spec = make_source_file(path=path, content=content)
+        elif kind == "plan":
+            if plan is not None:
+                raise ValueError("at most one source with kind='plan' is allowed")
+            plan = make_source_file(path=path, content=content)
+        else:
+            raise ValueError(f"unknown source kind: {kind!r}")
 
     b = await _get_backend()
     result = await begin_import(
         backend=b,
         project_id=project_id,
         actor_id=aid,
-        spec_path=Path(from_spec) if from_spec else None,
-        plan_path=Path(from_plan) if from_plan else None,
+        spec=spec,
+        plan=plan,
         dest_lang=dest_lang,
-        repo_root=rr,
+        repo_root=repo_root,
         force=force,
     )
     if result.kind == "manifest":

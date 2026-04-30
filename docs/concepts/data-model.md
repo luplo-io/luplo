@@ -146,14 +146,19 @@ lost, and any past state can be reconstructed.
 
 ## Where the design is written down
 
-Migrations are the executable spec:
+Migrations are the executable spec. They ship inside the wheel under
+``src/luplo/_db_assets/migrations/`` so ``lp migrate`` works from a
+PyPI install without a source checkout:
 
 ```
-db/migrations/
+src/luplo/_db_assets/migrations/
 ├── 0001_init_schema.py               # 12 tables, frozen 2026-04-13
 ├── 0002_auth_redesign.py             # actors TEXT → UUID, email-first
 ├── 0003_item_types_and_context.py    # substrate refactor + registry
-└── 0004_add_research_item_type.py    # research type + URL CHECK
+├── 0004_add_research_item_type.py    # research type + URL CHECK
+├── 0005_auth_reset_tokens.py
+├── 0006_drop_auth.py
+└── 0007_work_units_context.py        # work_units.context jsonb + GIN index
 ```
 
 See {doc}`../project/changelog` for the narrative version.

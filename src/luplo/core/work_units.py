@@ -221,24 +221,28 @@ async def find_existing_import_wu(
     conn: AsyncConnection[Any],
     *,
     project_id: str,
-    source_paths: tuple[str, ...],
+    content_hash_set: tuple[str, ...],
 ) -> WorkUnit | None:
-    """Find a non-archived import work unit whose source-path set matches.
+    """Find a non-archived import work unit whose content hash set matches.
 
     Used by ``lp import begin`` for dedup. Matches when:
 
     * ``project_id`` matches the work unit's project, AND
     * ``status`` is not in ``('archived', 'abandoned')`` — done imports
-      still occupy that source-path-set, so a re-import without
-      ``--force`` should refuse, AND
+      still occupy that content set, so a re-import without ``--force``
+      should refuse, AND
     * ``context->>'kind' = 'import'``, AND
-    * the sorted set of ``context.source_paths`` equals the sorted form
-      of the supplied ``source_paths`` (order-insensitive).
+    * the sorted set of ``context.content_hash_set`` equals the sorted
+      form of the supplied ``content_hash_set`` (order-insensitive).
+
+    Content-hash matching (vs path matching) is what makes dedup invariant
+    under cwd changes, symlinks, and the cloud MCP scenario where the
+    server has no concept of the agent's filesystem layout.
 
     Args:
         conn: Async psycopg connection.
         project_id: Project scope for the lookup.
-        source_paths: Source paths captured by ``lp import begin``. The
+        content_hash_set: Sha256 hashes captured by ``begin_import``. The
             tuple is sorted in Python before binding to PG so the SQL
             comparison is order-insensitive.
 
@@ -246,7 +250,7 @@ async def find_existing_import_wu(
         The most recently created matching ``WorkUnit``, or ``None`` when
         no match exists.
     """
-    sorted_paths = sorted(source_paths)
+    sorted_hashes = sorted(content_hash_set)
 
     query = sql.SQL(
         "SELECT {columns} FROM work_units"
@@ -254,15 +258,15 @@ async def find_existing_import_wu(
         "   AND status NOT IN ('archived', 'abandoned')"
         "   AND context->>'kind' = 'import'"
         "   AND ("
-        "     SELECT array_agg(p ORDER BY p)"
-        "     FROM jsonb_array_elements_text(context->'source_paths') AS p"
-        "   ) = %(paths)s::text[]"
+        "     SELECT array_agg(h ORDER BY h)"
+        "     FROM jsonb_array_elements_text(context->'content_hash_set') AS h"
+        "   ) = %(hashes)s::text[]"
         " ORDER BY created_at DESC"
         " LIMIT 1"
     ).format(columns=_RETURNING)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"pid": project_id, "paths": sorted_paths})
+        await cur.execute(query, {"pid": project_id, "hashes": sorted_hashes})
         row = await cur.fetchone()
         return _row_to_work_unit(row) if row else None
 
