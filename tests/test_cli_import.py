@@ -65,6 +65,11 @@ name = "test"
 email = "test@example.com"
 """
     )
+    # CI sets ``LUPLO_DB_URL`` for the bare-CLI ``alembic upgrade head`` step
+    # (the ``luplo`` DB), but tests run against the ``luplo_test`` fixture DB.
+    # luplo's config layer prefers env over .luplo, so without this monkeypatch
+    # the CLI under test would connect to the wrong database.
+    monkeypatch.setenv("LUPLO_DB_URL", db_url)
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
