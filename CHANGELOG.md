@@ -11,6 +11,8 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-04-30
+
 ### Added
 - `lp migrate` CLI command — runs `alembic upgrade head` against `LUPLO_DB_URL` (or `--db-url`) without reading `.luplo`. Idempotent, safe to call from container boot scripts. Production deploys (e.g. `luplo-cloud/api/deploy/start.sh`) should invoke this directly before launching the application.
 - Alembic migration scripts (`db/migrations/`) and the alembic environment (`alembic.ini`, `env.py`, `script.py.mako`) are now packaged inside the wheel under `luplo/_db_assets/` and located at runtime via `importlib.resources`. Previously these lived at the repo root and `lp init` silently skipped migrations on PyPI installs because the path-walk-based locator only worked in editable / source layouts.
@@ -479,7 +481,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/luplo-io/luplo/releases/tag/v0.13.0
 [0.12.0]: https://github.com/luplo-io/luplo/releases/tag/v0.12.0
 [0.11.1]: https://github.com/luplo-io/luplo/releases/tag/v0.11.1
 [0.11.0]: https://github.com/luplo-io/luplo/releases/tag/v0.11.0
