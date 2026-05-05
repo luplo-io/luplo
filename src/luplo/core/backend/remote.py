@@ -293,6 +293,7 @@ class RemoteBackend:
         self,
         *,
         work_unit_id: str,
+        project_id: str | None = None,
         limit: int = 100,
         include_redacted: bool = False,
     ) -> list[Idea]:
@@ -322,7 +323,7 @@ class RemoteBackend:
         idea_id: str,
         redacted_by: str,
         project_id: str | None = None,
-    ) -> Idea:
+    ) -> tuple[Idea, bool]:
         raise NotImplementedError("ideas are not yet exposed on the remote (cloud) backend")
 
 

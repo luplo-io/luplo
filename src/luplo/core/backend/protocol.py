@@ -265,6 +265,7 @@ class Backend(Protocol):
         self,
         *,
         work_unit_id: str,
+        project_id: str | None = None,
         limit: int = 100,
         include_redacted: bool = False,
     ) -> list[Idea]: ...
@@ -291,7 +292,13 @@ class Backend(Protocol):
         idea_id: str,
         redacted_by: str,
         project_id: str | None = None,
-    ) -> Idea: ...
+    ) -> tuple[Idea, bool]:
+        """Redact an idea; return ``(idea, newly_redacted)``.
+
+        ``newly_redacted=False`` indicates an idempotent retry — the row
+        was already redacted, so callers should skip side-effects.
+        """
+        ...
 
     # ── Work Units ───────────────────────────────────────────────
 

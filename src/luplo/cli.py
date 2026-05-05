@@ -177,6 +177,7 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
         IdTooShortError,
         InvalidIdFormatError,
         NotFoundError,
+        ValidationError,
     )
 
     try:
@@ -200,6 +201,9 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     except ConflictError as exc:
         # Catches TaskStateTransitionError, QAStateTransitionError,
         # TaskAlreadyInProgressError, WorkUnitHasActiveTasksError, etc.
+        typer.echo(f"Error: {exc.message}", err=True)
+        raise typer.Exit(2) from exc
+    except ValidationError as exc:
         typer.echo(f"Error: {exc.message}", err=True)
         raise typer.Exit(2) from exc
 
@@ -1552,11 +1556,19 @@ async def _resolve_active_wu_or_exit(b: Any, project_id: str) -> str:
 
 
 def _print_idea(idea: Any) -> None:
-    text = idea.text.replace("\n", " ")
-    if len(text) > 120:
-        text = text[:117] + "…"
-    redacted = " [REDACTED]" if idea.redacted_at else ""
-    typer.echo(f"  {idea.id[:8]}  {idea.created_at:%Y-%m-%d %H:%M}{redacted}  {text}")
+    # Mask redacted text on the public surface — the row stays visible
+    # for audit (id + timestamps + redacted_by) but original content is
+    # withheld. Fetching raw text requires the SaaS-side `get_idea`
+    # admin path.
+    if idea.redacted_at:
+        body = "[redacted]"
+        redacted = " [REDACTED]"
+    else:
+        body = idea.text.replace("\n", " ")
+        if len(body) > 120:
+            body = body[:117] + "…"
+        redacted = ""
+    typer.echo(f"  {idea.id[:8]}  {idea.created_at:%Y-%m-%d %H:%M}{redacted}  {body}")
 
 
 @idea_app.command("add")
@@ -1609,6 +1621,7 @@ def idea_ls(
             wu_id = work_unit or await _resolve_active_wu_or_exit(b, pid)
             rows = await b.list_ideas(
                 work_unit_id=wu_id,
+                project_id=pid,
                 limit=limit,
                 include_redacted=include_redacted,
             )
@@ -1631,8 +1644,18 @@ def idea_find(
     since: str | None = typer.Option(
         None, "--since", help="ISO datetime, Nd/Nw, or this_week/this_month/this_quarter."
     ),
-    until: str | None = typer.Option(None, "--until"),
-    include_redacted: bool = typer.Option(False, "--include-redacted"),
+    until: str | None = typer.Option(
+        None,
+        "--until",
+        help="ISO datetime or Nd/Nw. Anchors (this_week / this_month / "
+        "this_quarter) are since-only and rejected here.",
+    ),
+    include_redacted: bool = typer.Option(
+        False,
+        "--include-redacted",
+        help="Include redacted rows in the listing (filter-only — cannot "
+        "be combined with a text query, which would leak via match/no-match).",
+    ),
     limit: int = typer.Option(50, "--limit"),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
@@ -1643,8 +1666,8 @@ def idea_find(
     q = " ".join(query) if query else None
 
     try:
-        since_dt = parse_since(since)
-        until_dt = parse_since(until)
+        since_dt = parse_since(since, mode="since")
+        until_dt = parse_since(until, mode="until")
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(2) from exc
@@ -1676,15 +1699,22 @@ def idea_redact(
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
-    """Mark an idea redacted (idempotent). --project scopes prefix resolution."""
+    """Mark an idea redacted (idempotent).
+
+    ``--project`` scopes prefix resolution **and** the SQL predicate so a
+    full UUID from another project cannot mutate this row. Aligned with
+    the rest of ``lp idea`` — uses ``_cfg_project`` like the others.
+    """
+    pid = _cfg_project(project)
     aid = _cfg_actor(actor)
-    cfg = load_config()
-    pid: str | None = project or cfg.project_id or None
 
     async def _do() -> None:
         async with _backend() as b:
-            idea = await b.redact_idea(idea_id=idea_id, redacted_by=aid, project_id=pid)
-            typer.echo(f"Redacted idea: {idea.id[:8]} (at {idea.redacted_at:%Y-%m-%d %H:%M})")
+            idea, newly = await b.redact_idea(
+                idea_id=idea_id, redacted_by=aid, project_id=pid
+            )
+            verb = "Redacted" if newly else "Already redacted"
+            typer.echo(f"{verb} idea: {idea.id[:8]} (at {idea.redacted_at:%Y-%m-%d %H:%M})")
 
     _run(_do())
 

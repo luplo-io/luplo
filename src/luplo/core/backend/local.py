@@ -1101,6 +1101,7 @@ class LocalBackend:
         self,
         *,
         work_unit_id: str,
+        project_id: str | None = None,
         limit: int = 100,
         include_redacted: bool = False,
     ) -> list[Idea]:
@@ -1108,6 +1109,7 @@ class LocalBackend:
             return await ideas.list_ideas(
                 conn,
                 work_unit_id=work_unit_id,
+                project_id=project_id,
                 limit=limit,
                 include_redacted=include_redacted,
             )
@@ -1149,22 +1151,26 @@ class LocalBackend:
         idea_id: str,
         redacted_by: str,
         project_id: str | None = None,
-    ) -> Idea:
+    ) -> tuple[Idea, bool]:
         async with self.pool.connection() as conn:
-            idea = await ideas.redact_idea(
+            idea, newly_redacted = await ideas.redact_idea(
                 conn,
                 idea_id=idea_id,
                 redacted_by=redacted_by,
                 project_id=project_id,
             )
-            await audit.record_audit(
-                conn,
-                actor_id=redacted_by,
-                action="idea.redact",
-                target_type="idea",
-                target_id=idea.id,
-            )
-            return idea
+            # Skip the audit row on an idempotent no-op — otherwise a
+            # caller looping on redact appends unbounded rows for a
+            # single state change.
+            if newly_redacted:
+                await audit.record_audit(
+                    conn,
+                    actor_id=redacted_by,
+                    action="idea.redact",
+                    target_type="idea",
+                    target_id=idea.id,
+                )
+            return idea, newly_redacted
 
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 

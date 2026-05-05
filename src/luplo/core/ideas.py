@@ -19,7 +19,11 @@ from typing import Any
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
-from luplo.core.errors import InvalidIdFormatError
+from luplo.core.errors import (
+    InvalidIdFormatError,
+    NotFoundError,
+    ValidationError,
+)
 from luplo.core.glossary import fetch_glossary_map
 from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import Idea
@@ -38,21 +42,35 @@ _COLUMNS = (
 
 _RETURNING = sql.SQL(", ").join(sql.Identifier(c) for c in _COLUMNS)
 
-_FORBIDDEN_WU_STATUSES = ("archived", "abandoned")
+# Statuses that reject new ideas. Surfaced both in the INSERT predicate
+# and in the diagnostic SELECT below — single source of truth.
+_FORBIDDEN_WU_STATUSES: tuple[str, ...] = ("archived", "abandoned")
+_FORBIDDEN_WU_STATUSES_SQL = sql.SQL(", ").join(sql.Literal(s) for s in _FORBIDDEN_WU_STATUSES)
 
 _LIMIT_MAX = 1000
 
 
 def _row_to_idea(row: dict[str, Any]) -> Idea:
-    for col in ("created_by", "redacted_by"):
-        if row.get(col) is not None:
-            row[col] = str(row[col])
-    return Idea(**row)
+    """Coerce a psycopg ``dict_row`` into an :class:`Idea`.
+
+    UUID columns become strings without mutating the input dict — search
+    callers may slice the row before passing it in.
+    """
+    return Idea(
+        id=row["id"],
+        work_unit_id=row["work_unit_id"],
+        project_id=row["project_id"],
+        text=row["text"],
+        created_at=row["created_at"],
+        created_by=str(row["created_by"]) if row.get("created_by") is not None else None,
+        redacted_at=row["redacted_at"],
+        redacted_by=str(row["redacted_by"]) if row.get("redacted_by") is not None else None,
+    )
 
 
 def _validate_limit(limit: int) -> None:
     if limit <= 0 or limit > _LIMIT_MAX:
-        raise ValueError(f"limit must be between 1 and {_LIMIT_MAX}, got {limit}")
+        raise ValidationError(f"limit must be between 1 and {_LIMIT_MAX}, got {limit}")
 
 
 async def _resolve_wu_id(
@@ -93,15 +111,16 @@ async def add_idea(
     window between "I checked archived" and "I inserted".
 
     Raises:
-        ValueError: empty text, missing WU, cross-project WU, or WU in
-            a status that rejects new ideas.
+        ValidationError: empty text, cross-project WU, or WU in a status
+            that rejects new ideas.
+        NotFoundError: ``work_unit_id`` does not resolve to any row.
     """
     if not text.strip():
-        raise ValueError("idea text must not be empty")
+        raise ValidationError("idea text must not be empty")
 
     resolved_wu = await _resolve_wu_id(conn, work_unit_id, project_id)
     if resolved_wu is None:
-        raise ValueError(f"work_unit not found: {work_unit_id}")
+        raise NotFoundError(f"work_unit not found: {work_unit_id}")
 
     idea_id = id or str(uuid.uuid4())
 
@@ -116,9 +135,9 @@ async def add_idea(
                 " FROM work_units"
                 " WHERE id = %(wu)s"
                 "   AND project_id = %(pid)s"
-                "   AND status NOT IN ('archived', 'abandoned')"
+                "   AND status NOT IN ({forbidden})"
                 " RETURNING {returning}"
-            ).format(returning=_RETURNING),
+            ).format(returning=_RETURNING, forbidden=_FORBIDDEN_WU_STATUSES_SQL),
             {
                 "id": idea_id,
                 "wu": resolved_wu,
@@ -133,18 +152,21 @@ async def add_idea(
 
         # Insert refused. Diagnose for a precise error — separate trip
         # is fine here, this is the cold path.
+        #
+        # Cross-project mismatches collapse to a plain "not found" so a
+        # caller cannot probe another project's WU ids by feeding random
+        # UUIDs and reading the error message. Within-project status
+        # rejection still surfaces a precise reason.
         await cur.execute(
             "SELECT project_id, status FROM work_units WHERE id = %(id)s",
             {"id": resolved_wu},
         )
         wu_row = await cur.fetchone()
-        if wu_row is None:
-            # Race: WU was deleted between resolve and diagnose. Treat as
-            # not-found from the caller's point of view.
-            raise ValueError(f"work_unit not found: {work_unit_id}")
-        if wu_row["project_id"] != project_id:
-            raise ValueError(f"work_unit {work_unit_id} belongs to a different project")
-        raise ValueError(f"work_unit {work_unit_id} is {wu_row['status']}; cannot add ideas")
+        if wu_row is None or wu_row["project_id"] != project_id:
+            raise NotFoundError(f"work_unit not found: {work_unit_id}")
+        raise ValidationError(
+            f"work_unit {work_unit_id} is {wu_row['status']}; cannot add ideas"
+        )
 
 
 # ── Read ─────────────────────────────────────────────────────────
@@ -154,21 +176,28 @@ async def list_ideas(
     conn: AsyncConnection[Any],
     *,
     work_unit_id: str,
+    project_id: str | None = None,
     limit: int = 100,
     include_redacted: bool = False,
 ) -> list[Idea]:
     """List ideas for a work unit, newest first.
 
-    Accepts a full UUID or 8+ hex prefix for ``work_unit_id``. Redacted
-    rows are excluded by default; ``include_redacted=True`` opts back
-    in (admin / audit flows).
+    Accepts a full UUID or 8+ hex prefix for ``work_unit_id``. ``project_id``
+    scopes prefix resolution and is also enforced at the SELECT level so a
+    full UUID from another project returns ``[]`` instead of leaking rows.
+    Redacted rows are excluded by default; ``include_redacted=True`` opts
+    back in (admin / audit flows).
     """
     _validate_limit(limit)
-    resolved_wu = await _resolve_wu_id(conn, work_unit_id, None)
+    resolved_wu = await _resolve_wu_id(conn, work_unit_id, project_id)
     if resolved_wu is None:
         return []
 
     conditions: list[sql.Composable] = [sql.SQL("work_unit_id = %(wu)s")]
+    params: dict[str, Any] = {"wu": resolved_wu, "limit": limit}
+    if project_id is not None:
+        conditions.append(sql.SQL("project_id = %(pid)s"))
+        params["pid"] = project_id
     if not include_redacted:
         conditions.append(sql.SQL("redacted_at IS NULL"))
     where = sql.SQL(" AND ").join(conditions)
@@ -178,7 +207,7 @@ async def list_ideas(
     ).format(columns=_RETURNING, where=where)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"wu": resolved_wu, "limit": limit})
+        await cur.execute(query, params)
         rows = await cur.fetchall()
         return [_row_to_idea(r) for r in rows]
 
@@ -211,9 +240,22 @@ async def search_ideas(
     caller does string parsing). Both ``query`` and ``tsquery`` may be
     ``None`` for a filter-only search (e.g. "내가 이번 주 적은 아이디어").
     Redacted rows excluded unless ``include_redacted=True``.
+
+    ``include_redacted=True`` cannot be combined with ``query`` /
+    ``tsquery`` — the body is masked at the response layer, but a text
+    predicate on redacted rows would leak via match/no-match (a keyword
+    oracle). Use filter-only mode for audit flows, or fetch raw text
+    via the SaaS-side admin path.
     """
     if query is not None and tsquery is not None:
-        raise ValueError("pass either query or tsquery, not both")
+        raise ValidationError("pass either query or tsquery, not both")
+    if include_redacted and (query is not None or tsquery is not None):
+        raise ValidationError(
+            "include_redacted=True cannot be combined with a text query — "
+            "match/no-match leaks the redacted body via a keyword oracle. "
+            "Filter by author/since/work_unit_id only, or use a SaaS-side "
+            "admin path for raw text access."
+        )
     _validate_limit(limit)
 
     conditions: list[sql.Composable] = [sql.SQL("project_id = %(pid)s")]
@@ -270,9 +312,13 @@ async def search_ideas(
         rank_expr = sql.SQL("ts_rank(to_tsvector('simple', text), to_tsquery('simple', %(tsq)s))")
 
     where = sql.SQL(" AND ").join(conditions)
+    # Compute rank inside a subquery so the outer projection is clean —
+    # no per-row dict-comprehension to strip an alias column.
     full = sql.SQL(
-        "SELECT {columns}, {rank} AS _rank FROM ideas"
+        "SELECT {columns} FROM ("
+        " SELECT {columns}, {rank} AS _rank FROM ideas"
         " WHERE {where}"
+        ") ranked"
         " ORDER BY _rank DESC, created_at DESC"
         " LIMIT %(limit)s"
     ).format(columns=_RETURNING, rank=rank_expr, where=where)
@@ -280,7 +326,7 @@ async def search_ideas(
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(full, params)
         rows = await cur.fetchall()
-        return [_row_to_idea({k: v for k, v in r.items() if k != "_rank"}) for r in rows]
+        return [_row_to_idea(r) for r in rows]
 
 
 async def redact_idea(
@@ -289,44 +335,74 @@ async def redact_idea(
     idea_id: str,
     redacted_by: str,
     project_id: str | None = None,
-) -> Idea:
+) -> tuple[Idea, bool]:
     """Mark an idea as redacted (idempotent — no-op if already redacted).
 
     Append-only invariant preserved: the row remains, ``text`` is not
     cleared, and downstream readers filter on ``redacted_at IS NULL``
     by default.
 
-    ``project_id`` (when provided) scopes prefix resolution so an 8-char
-    prefix collision in a different project cannot accidentally match.
-    Ambiguity errors surface only the matched ``id`` values, never the
-    text content (so a redacted body cannot leak via the error message).
+    ``project_id`` (when provided) scopes prefix resolution **and** is
+    enforced in the UPDATE/SELECT predicate so a full UUID from another
+    project cannot mutate or read this row. Ambiguity errors surface
+    only the matched ``id`` values, never the text content.
+
+    Returns ``(idea, newly_redacted)``: ``newly_redacted=True`` on first
+    transition to redacted, ``False`` on idempotent retry. Callers can
+    skip side-effects (audit, notifications) when ``False``.
 
     Raises:
-        ValueError: when ``idea_id`` does not resolve to an existing row.
+        NotFoundError: when ``idea_id`` does not resolve to an existing
+            row in this project.
     """
     resolved = await resolve_uuid_prefix(
         conn, "ideas", idea_id, project_id=project_id, label_column="id"
     )
     if resolved is None:
-        raise ValueError(f"idea not found: {idea_id}")
+        raise NotFoundError(f"idea not found: {idea_id}")
 
-    query = sql.SQL(
+    update_conditions: list[sql.Composable] = [
+        sql.SQL("id = %(id)s"),
+        sql.SQL("redacted_at IS NULL"),
+    ]
+    params: dict[str, Any] = {"id": resolved, "by": redacted_by}
+    if project_id is not None:
+        update_conditions.append(sql.SQL("project_id = %(pid)s"))
+        params["pid"] = project_id
+    update_where = sql.SQL(" AND ").join(update_conditions)
+
+    update_query = sql.SQL(
         "UPDATE ideas"
-        " SET redacted_at = COALESCE(redacted_at, now()),"
-        "     redacted_by = COALESCE(redacted_by, %(by)s)"
-        " WHERE id = %(id)s"
+        " SET redacted_at = now(),"
+        "     redacted_by = %(by)s"
+        " WHERE {where}"
         " RETURNING {columns}"
-    ).format(columns=_RETURNING)
+    ).format(columns=_RETURNING, where=update_where)
 
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": resolved, "by": redacted_by})
+        await cur.execute(update_query, params)
         row = await cur.fetchone()
-        if row is None:
-            # resolve_uuid_prefix returns canonical UUIDs unchanged without
-            # checking existence — so a full UUID for a non-existent idea
-            # gets here with no UPDATE match.
-            raise ValueError(f"idea not found: {idea_id}")
-        return _row_to_idea(row)
+        if row is not None:
+            return _row_to_idea(row), True
+
+        # No row updated → either already redacted (idempotent no-op) or
+        # not in this project. Disambiguate via SELECT scoped to project.
+        select_conditions: list[sql.Composable] = [sql.SQL("id = %(id)s")]
+        select_params: dict[str, Any] = {"id": resolved}
+        if project_id is not None:
+            select_conditions.append(sql.SQL("project_id = %(pid)s"))
+            select_params["pid"] = project_id
+        select_where = sql.SQL(" AND ").join(select_conditions)
+        select_query = sql.SQL(
+            "SELECT {columns} FROM ideas WHERE {where}"
+        ).format(columns=_RETURNING, where=select_where)
+        await cur.execute(select_query, select_params)
+        existing = await cur.fetchone()
+        if existing is None:
+            # Row exists by id but not in this project — treat as not-found
+            # to avoid leaking other-project membership.
+            raise NotFoundError(f"idea not found: {idea_id}")
+        return _row_to_idea(existing), False
 
 
 async def get_idea(
@@ -337,20 +413,30 @@ async def get_idea(
 ) -> Idea | None:
     """Fetch a single idea by id (or hex prefix). Includes redacted rows.
 
-    Saas-side permission checks need to fetch the row before deciding
+    SaaS-side permission checks need to fetch the row before deciding
     whether redact is allowed — hence this is a separate helper rather
     than relying on list/search.
 
-    ``project_id`` scopes prefix resolution. Ambiguity errors surface
-    only the matched ``id`` values.
+    ``project_id`` scopes prefix resolution **and** is enforced in the
+    SELECT predicate so a full UUID from another project returns ``None``
+    instead of leaking the row. Ambiguity errors surface only the matched
+    ``id`` values.
     """
     resolved = await resolve_uuid_prefix(
         conn, "ideas", idea_id, project_id=project_id, label_column="id"
     )
     if resolved is None:
         return None
-    query = sql.SQL("SELECT {columns} FROM ideas WHERE id = %(id)s").format(columns=_RETURNING)
+    conditions: list[sql.Composable] = [sql.SQL("id = %(id)s")]
+    params: dict[str, Any] = {"id": resolved}
+    if project_id is not None:
+        conditions.append(sql.SQL("project_id = %(pid)s"))
+        params["pid"] = project_id
+    where = sql.SQL(" AND ").join(conditions)
+    query = sql.SQL("SELECT {columns} FROM ideas WHERE {where}").format(
+        columns=_RETURNING, where=where
+    )
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {"id": resolved})
+        await cur.execute(query, params)
         row = await cur.fetchone()
         return _row_to_idea(row) if row else None

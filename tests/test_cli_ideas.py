@@ -142,7 +142,9 @@ def test_idea_find_filters_by_keyword(env: dict[str, str], db_url: str) -> None:
 
 def test_idea_redact_hides_from_default_ls(env: dict[str, str], db_url: str) -> None:
     wu_id = _seed_wu(db_url)
-    add_result = runner.invoke(app, ["idea", "add", "secret", "--wu", wu_id], env=env)
+    add_result = runner.invoke(
+        app, ["idea", "add", "secret password content", "--wu", wu_id], env=env
+    )
     assert add_result.exit_code == 0
     # Pull the 8-char id from output: "Added idea: <id8> (work_unit: <wu8>)"
     import re
@@ -153,13 +155,56 @@ def test_idea_redact_hides_from_default_ls(env: dict[str, str], db_url: str) -> 
 
     redact_result = runner.invoke(app, ["idea", "redact", idea_short], env=env)
     assert redact_result.exit_code == 0, redact_result.output
+    assert "Redacted" in redact_result.output
 
     ls_result = runner.invoke(app, ["idea", "ls", "--wu", wu_id], env=env)
-    assert "secret" not in ls_result.output
+    assert "secret password" not in ls_result.output
 
+    # Round 2 B4: --include-redacted surfaces the row's existence (id +
+    # timestamp + REDACTED marker) but the original text is masked. The
+    # MCP/CLI surface is not an admin path; raw redacted content is
+    # only available via SaaS-side admin tools.
     ls_all = runner.invoke(app, ["idea", "ls", "--wu", wu_id, "--include-redacted"], env=env)
-    assert "secret" in ls_all.output
-    assert "REDACTED" in ls_all.output
+    assert ls_all.exit_code == 0, ls_all.output
+    assert "secret password" not in ls_all.output  # body masked
+    assert "[redacted]" in ls_all.output  # mask placeholder
+    assert "REDACTED" in ls_all.output  # status marker still present
+
+
+def test_idea_redact_idempotent_marks_already_redacted(
+    env: dict[str, str], db_url: str
+) -> None:
+    """Round 2 S2: second redact reports 'Already redacted' instead of
+    silently re-stamping (and the audit log only records one entry).
+    """
+    import re
+
+    wu_id = _seed_wu(db_url)
+    add_result = runner.invoke(app, ["idea", "add", "x", "--wu", wu_id], env=env)
+    m = re.search(r"Added idea: ([0-9a-f]{8})", add_result.output)
+    assert m, add_result.output
+    idea_short = m.group(1)
+
+    first = runner.invoke(app, ["idea", "redact", idea_short], env=env)
+    assert first.exit_code == 0
+    assert first.output.startswith("Redacted ")
+
+    second = runner.invoke(app, ["idea", "redact", idea_short], env=env)
+    assert second.exit_code == 0
+    assert second.output.startswith("Already redacted ")
+
+
+def test_idea_redact_bogus_id_clean_error(env: dict[str, str], db_url: str) -> None:
+    """Round 2 B5: a bogus full UUID surfaces as a clean error, not a
+    Python traceback — domain errors get translated by ``_run``.
+    """
+    bogus = "00000000-0000-0000-0000-0000000000ff"
+    result = runner.invoke(app, ["idea", "redact", bogus], env=env)
+    assert result.exit_code == 1
+    assert "Error:" in result.output
+    assert "not found" in result.output.lower()
+    # Python traceback markers must not appear.
+    assert "Traceback" not in result.output
 
 
 def test_idea_add_uses_active_wu_when_omitted(env: dict[str, str], db_url: str) -> None:
