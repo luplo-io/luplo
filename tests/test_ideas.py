@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from luplo.core.ideas import add_idea, list_ideas
+from luplo.core.ideas import add_idea, list_ideas, search_ideas
 from luplo.core.work_units import open_work_unit
 
 
@@ -127,6 +127,121 @@ async def test_add_idea_rejects_archived_wu(
             work_unit_id=wu.id,
             text="too late",
         )
+
+
+@pytest.mark.asyncio
+async def test_search_ideas_simple_query(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="auth",
+        created_by=seed_actor,
+    )
+    await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="refresh token swap on the frontend",
+    )
+    await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="vendor inventory rotation",
+    )
+
+    rows = await search_ideas(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        query="refresh token",
+    )
+    assert len(rows) == 1
+    assert "refresh" in rows[0].text
+
+
+@pytest.mark.asyncio
+async def test_search_ideas_filters_by_author(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """`author` parameter scopes search to a single creator."""
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="multi-author",
+        created_by=seed_actor,
+    )
+    other_actor = "00000000-0000-0000-0000-000000000002"
+    await conn.execute(  # type: ignore[attr-defined]
+        "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s)",
+        (other_actor, "Other", "other@x.io"),
+    )
+    await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="mine",
+        created_by=seed_actor,
+    )
+    await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="theirs",
+        created_by=other_actor,
+    )
+
+    mine = await search_ideas(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        author=seed_actor,
+    )
+    assert {r.text for r in mine} == {"mine"}
+
+
+@pytest.mark.asyncio
+async def test_search_ideas_excludes_redacted_by_default(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="x",
+        created_by=seed_actor,
+    )
+    visible = await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="visible token",
+    )
+    hidden = await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="hidden token",
+    )
+    # Manually redact one — proper redact_idea comes in the next task.
+    await conn.execute(  # type: ignore[attr-defined]
+        "UPDATE ideas SET redacted_at = now(), redacted_by = %s WHERE id = %s",
+        (seed_actor, hidden.id),
+    )
+
+    default_results = await search_ideas(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        query="token",
+    )
+    assert {r.id for r in default_results} == {visible.id}
+
+    with_redacted = await search_ideas(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        query="token",
+        include_redacted=True,
+    )
+    assert {r.id for r in with_redacted} == {visible.id, hidden.id}
 
 
 @pytest.mark.asyncio

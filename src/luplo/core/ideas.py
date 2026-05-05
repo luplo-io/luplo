@@ -13,13 +13,16 @@ cleanup.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
+from luplo.core.glossary import fetch_glossary_map
 from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import Idea
+from luplo.core.search.tsquery import OrGroup, Term, build_tsquery, parse_user_query
 
 _COLUMNS = (
     "id",
@@ -138,6 +141,110 @@ async def list_ideas(
         await cur.execute(query, {"wu": work_unit_id, "limit": limit})
         rows = await cur.fetchall()
         return [_row_to_idea(r) for r in rows]
+
+
+async def search_ideas(
+    conn: AsyncConnection[Any],
+    *,
+    project_id: str,
+    query: str | None = None,
+    tsquery: str | None = None,
+    work_unit_id: str | None = None,
+    author: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    include_redacted: bool = False,
+    limit: int = 50,
+) -> list[Idea]:
+    """Full-text search over ideas, project-scoped.
+
+    Two query modes (mutually exclusive):
+
+    * ``query`` — simple dialect, glossary-expanded. Same dialect as
+      :func:`luplo.core.search.pipeline.search` for items.
+    * ``tsquery`` — raw ``to_tsquery`` expression. Caller owns synonym
+      coverage and validity.
+
+    Filters: ``work_unit_id`` (narrow scope), ``author`` (actor id),
+    ``since`` / ``until`` (datetime — caller does string parsing).
+    Redacted rows excluded unless ``include_redacted=True``.
+    """
+    if query is not None and tsquery is not None:
+        raise ValueError("pass either query or tsquery, not both")
+
+    conditions: list[sql.Composable] = [sql.SQL("project_id = %(pid)s")]
+    params: dict[str, Any] = {"pid": project_id, "limit": limit}
+
+    if not include_redacted:
+        conditions.append(sql.SQL("redacted_at IS NULL"))
+
+    if work_unit_id is not None:
+        conditions.append(sql.SQL("work_unit_id = %(wu)s"))
+        params["wu"] = work_unit_id
+
+    if author is not None:
+        conditions.append(sql.SQL("created_by = %(author)s"))
+        params["author"] = author
+
+    if since is not None:
+        conditions.append(sql.SQL("created_at >= %(since_at)s"))
+        params["since_at"] = since
+    if until is not None:
+        conditions.append(sql.SQL("created_at < %(until_at)s"))
+        params["until_at"] = until
+
+    rank_expr: sql.Composable = sql.SQL("0::float4")
+    if tsquery is not None:
+        if not tsquery.strip():
+            return []
+        params["tsq"] = tsquery
+        conditions.append(
+            sql.SQL("to_tsvector('simple', text) @@ to_tsquery('simple', %(tsq)s)")
+        )
+        rank_expr = sql.SQL(
+            "ts_rank(to_tsvector('simple', text), to_tsquery('simple', %(tsq)s))"
+        )
+    elif query is not None:
+        if not query.strip():
+            return []
+        clauses = parse_user_query(query)
+        if not clauses:
+            return []
+        expandable: list[str] = []
+        for clause in clauses:
+            if isinstance(clause, Term) and not clause.phrase and not clause.negated:
+                expandable.append(clause.text)
+            elif isinstance(clause, OrGroup):
+                for m in clause.members:
+                    if not m.phrase and not m.negated:
+                        expandable.append(m.text)
+        glossary_map = await fetch_glossary_map(conn, expandable, project_id)
+        tsquery_str = build_tsquery(clauses, glossary_map)
+        if not tsquery_str:
+            return []
+        params["tsq"] = tsquery_str
+        conditions.append(
+            sql.SQL("to_tsvector('simple', text) @@ to_tsquery('simple', %(tsq)s)")
+        )
+        rank_expr = sql.SQL(
+            "ts_rank(to_tsvector('simple', text), to_tsquery('simple', %(tsq)s))"
+        )
+
+    where = sql.SQL(" AND ").join(conditions)
+    full = sql.SQL(
+        "SELECT {columns}, {rank} AS _rank FROM ideas"
+        " WHERE {where}"
+        " ORDER BY _rank DESC, created_at DESC"
+        " LIMIT %(limit)s"
+    ).format(columns=_RETURNING, rank=rank_expr, where=where)
+
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(full, params)
+        rows = await cur.fetchall()
+        return [
+            _row_to_idea({k: v for k, v in r.items() if k != "_rank"})
+            for r in rows
+        ]
 
 
 async def get_idea(
