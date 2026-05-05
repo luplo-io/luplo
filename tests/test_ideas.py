@@ -69,9 +69,7 @@ async def test_add_idea_rejects_empty_text(
 
 
 @pytest.mark.asyncio
-async def test_add_idea_rejects_missing_wu(
-    conn: object, seed_project: str
-) -> None:
+async def test_add_idea_rejects_missing_wu(conn: object, seed_project: str) -> None:
     with pytest.raises(ValueError, match="not found"):
         await add_idea(
             conn,  # type: ignore[arg-type]
@@ -168,9 +166,7 @@ async def test_redact_idea_hides_from_default_list(
 
 
 @pytest.mark.asyncio
-async def test_redact_idea_is_idempotent(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_redact_idea_is_idempotent(conn: object, seed_project: str, seed_actor: str) -> None:
     wu = await open_work_unit(
         conn,  # type: ignore[arg-type]
         project_id=seed_project,
@@ -209,9 +205,7 @@ async def test_redact_idea_missing_id_raises(
 
 
 @pytest.mark.asyncio
-async def test_search_ideas_simple_query(
-    conn: object, seed_project: str, seed_actor: str
-) -> None:
+async def test_search_ideas_simple_query(conn: object, seed_project: str, seed_actor: str) -> None:
     wu = await open_work_unit(
         conn,  # type: ignore[arg-type]
         project_id=seed_project,
@@ -335,8 +329,7 @@ async def test_add_idea_allowed_on_done_wu(
         created_by=seed_actor,
     )
     await conn.execute(  # type: ignore[attr-defined]
-        "UPDATE work_units SET status = 'done', closed_at = now()"
-        " WHERE id = %s",
+        "UPDATE work_units SET status = 'done', closed_at = now() WHERE id = %s",
         (wu.id,),
     )
     idea = await add_idea(

@@ -63,9 +63,7 @@ def _close_wu(db_url: str, wu_id: str) -> None:
 
 def test_idea_add_with_explicit_wu(env: dict[str, str], db_url: str) -> None:
     wu_id = _seed_wu(db_url)
-    result = runner.invoke(
-        app, ["idea", "add", "refresh token swap idea", "--wu", wu_id], env=env
-    )
+    result = runner.invoke(app, ["idea", "add", "refresh token swap idea", "--wu", wu_id], env=env)
     assert result.exit_code == 0, result.output
     assert "idea" in result.output.lower()
 
@@ -109,9 +107,7 @@ def test_idea_redact_hides_from_default_ls(env: dict[str, str], db_url: str) -> 
     ls_result = runner.invoke(app, ["idea", "ls", "--wu", wu_id], env=env)
     assert "secret" not in ls_result.output
 
-    ls_all = runner.invoke(
-        app, ["idea", "ls", "--wu", wu_id, "--include-redacted"], env=env
-    )
+    ls_all = runner.invoke(app, ["idea", "ls", "--wu", wu_id, "--include-redacted"], env=env)
     assert "secret" in ls_all.output
     assert "REDACTED" in ls_all.output
 

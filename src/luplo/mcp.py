@@ -882,9 +882,7 @@ def _parse_since(value: str) -> datetime | None:
         return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     if value == "this_quarter":
         q_start_month = ((now.month - 1) // 3) * 3 + 1
-        return now.replace(
-            month=q_start_month, day=1, hour=0, minute=0, second=0, microsecond=0
-        )
+        return now.replace(month=q_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
     if len(value) >= 2 and value[-1] in ("d", "w") and value[:-1].isdigit():
         n = int(value[:-1])
         delta = timedelta(days=n) if value[-1] == "d" else timedelta(weeks=n)
@@ -984,12 +982,23 @@ async def luplo_idea_search(
 
     Worked examples:
 
-    1. User says: "지난주 OAuth 리프레시 토큰 관련 아이디어"
-       → call ``luplo_idea_search(project_id=..., query="OAuth refresh token 리프레시 토큰", since="7d")``
+    1. User says: "지난주 OAuth 리프레시 토큰 관련 아이디어" → call::
 
-    2. User says: "내가 이번 분기에 적은 검색 인프라 idea"
-       → resolve "내가" → caller's actor_id; then call
-       ``luplo_idea_search(project_id=..., query="검색 인프라", author="<my-actor-id>", since="this_quarter")``
+           luplo_idea_search(
+               project_id=...,
+               query="OAuth refresh token 리프레시 토큰",
+               since="7d",
+           )
+
+    2. User says: "내가 이번 분기에 적은 검색 인프라 idea" → resolve "내가"
+       to the caller's actor_id, then call::
+
+           luplo_idea_search(
+               project_id=...,
+               query="검색 인프라",
+               author="<my-actor-id>",
+               since="this_quarter",
+           )
     """
     b = await _get_backend()
     rows = await b.search_ideas(

@@ -44,12 +44,8 @@ def upgrade() -> None:
             redacted_by  UUID REFERENCES actors(id)
         )
     """)
-    op.execute(
-        "CREATE INDEX idx_ideas_wu_created ON ideas (work_unit_id, created_at DESC)"
-    )
-    op.execute(
-        "CREATE INDEX idx_ideas_project_created ON ideas (project_id, created_at DESC)"
-    )
+    op.execute("CREATE INDEX idx_ideas_wu_created ON ideas (work_unit_id, created_at DESC)")
+    op.execute("CREATE INDEX idx_ideas_project_created ON ideas (project_id, created_at DESC)")
     op.execute(
         "CREATE INDEX idx_ideas_text_fts ON ideas USING gin (to_tsvector('simple', text))"
         " WHERE redacted_at IS NULL"

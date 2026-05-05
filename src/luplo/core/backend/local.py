@@ -1135,9 +1135,7 @@ class LocalBackend:
 
     async def redact_idea(self, *, idea_id: str, redacted_by: str) -> Idea:
         async with self.pool.connection() as conn:
-            return await ideas.redact_idea(
-                conn, idea_id=idea_id, redacted_by=redacted_by
-            )
+            return await ideas.redact_idea(conn, idea_id=idea_id, redacted_by=redacted_by)
 
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 

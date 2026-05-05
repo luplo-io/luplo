@@ -80,13 +80,9 @@ async def add_idea(
         if wu_row is None:
             raise ValueError(f"work_unit not found: {work_unit_id}")
         if wu_row["project_id"] != project_id:
-            raise ValueError(
-                f"work_unit {work_unit_id} belongs to a different project"
-            )
+            raise ValueError(f"work_unit {work_unit_id} belongs to a different project")
         if wu_row["status"] in ("archived", "abandoned"):
-            raise ValueError(
-                f"work_unit {work_unit_id} is {wu_row['status']}; cannot add ideas"
-            )
+            raise ValueError(f"work_unit {work_unit_id} is {wu_row['status']}; cannot add ideas")
 
         query = sql.SQL(
             "INSERT INTO ideas"
@@ -131,10 +127,7 @@ async def list_ideas(
     where = sql.SQL(" AND ").join(conditions)
 
     query = sql.SQL(
-        "SELECT {columns} FROM ideas"
-        " WHERE {where}"
-        " ORDER BY created_at DESC"
-        " LIMIT %(limit)s"
+        "SELECT {columns} FROM ideas WHERE {where} ORDER BY created_at DESC LIMIT %(limit)s"
     ).format(columns=_RETURNING, where=where)
 
     async with conn.cursor(row_factory=dict_row) as cur:
@@ -198,12 +191,8 @@ async def search_ideas(
         if not tsquery.strip():
             return []
         params["tsq"] = tsquery
-        conditions.append(
-            sql.SQL("to_tsvector('simple', text) @@ to_tsquery('simple', %(tsq)s)")
-        )
-        rank_expr = sql.SQL(
-            "ts_rank(to_tsvector('simple', text), to_tsquery('simple', %(tsq)s))"
-        )
+        conditions.append(sql.SQL("to_tsvector('simple', text) @@ to_tsquery('simple', %(tsq)s)"))
+        rank_expr = sql.SQL("ts_rank(to_tsvector('simple', text), to_tsquery('simple', %(tsq)s))")
     elif query is not None:
         if not query.strip():
             return []
@@ -223,12 +212,8 @@ async def search_ideas(
         if not tsquery_str:
             return []
         params["tsq"] = tsquery_str
-        conditions.append(
-            sql.SQL("to_tsvector('simple', text) @@ to_tsquery('simple', %(tsq)s)")
-        )
-        rank_expr = sql.SQL(
-            "ts_rank(to_tsvector('simple', text), to_tsquery('simple', %(tsq)s))"
-        )
+        conditions.append(sql.SQL("to_tsvector('simple', text) @@ to_tsquery('simple', %(tsq)s)"))
+        rank_expr = sql.SQL("ts_rank(to_tsvector('simple', text), to_tsquery('simple', %(tsq)s))")
 
     where = sql.SQL(" AND ").join(conditions)
     full = sql.SQL(
@@ -241,10 +226,7 @@ async def search_ideas(
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(full, params)
         rows = await cur.fetchall()
-        return [
-            _row_to_idea({k: v for k, v in r.items() if k != "_rank"})
-            for r in rows
-        ]
+        return [_row_to_idea({k: v for k, v in r.items() if k != "_rank"}) for r in rows]
 
 
 async def redact_idea(
@@ -262,9 +244,7 @@ async def redact_idea(
     Raises:
         ValueError: when ``idea_id`` does not resolve to an existing row.
     """
-    resolved = await resolve_uuid_prefix(
-        conn, "ideas", idea_id, label_column="text"
-    )
+    resolved = await resolve_uuid_prefix(conn, "ideas", idea_id, label_column="text")
     if resolved is None:
         raise ValueError(f"idea not found: {idea_id}")
 
@@ -297,14 +277,10 @@ async def get_idea(
     whether redact is allowed — hence this is a separate helper rather
     than relying on list/search.
     """
-    resolved = await resolve_uuid_prefix(
-        conn, "ideas", idea_id, label_column="text"
-    )
+    resolved = await resolve_uuid_prefix(conn, "ideas", idea_id, label_column="text")
     if resolved is None:
         return None
-    query = sql.SQL("SELECT {columns} FROM ideas WHERE id = %(id)s").format(
-        columns=_RETURNING
-    )
+    query = sql.SQL("SELECT {columns} FROM ideas WHERE id = %(id)s").format(columns=_RETURNING)
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
