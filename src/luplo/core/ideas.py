@@ -247,6 +247,46 @@ async def search_ideas(
         ]
 
 
+async def redact_idea(
+    conn: AsyncConnection[Any],
+    *,
+    idea_id: str,
+    redacted_by: str,
+) -> Idea:
+    """Mark an idea as redacted (idempotent — no-op if already redacted).
+
+    Append-only invariant preserved: the row remains, ``text`` is not
+    cleared, and downstream readers filter on ``redacted_at IS NULL``
+    by default.
+
+    Raises:
+        ValueError: when ``idea_id`` does not resolve to an existing row.
+    """
+    resolved = await resolve_uuid_prefix(
+        conn, "ideas", idea_id, label_column="text"
+    )
+    if resolved is None:
+        raise ValueError(f"idea not found: {idea_id}")
+
+    query = sql.SQL(
+        "UPDATE ideas"
+        " SET redacted_at = COALESCE(redacted_at, now()),"
+        "     redacted_by = COALESCE(redacted_by, %(by)s)"
+        " WHERE id = %(id)s"
+        " RETURNING {columns}"
+    ).format(columns=_RETURNING)
+
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query, {"id": resolved, "by": redacted_by})
+        row = await cur.fetchone()
+        if row is None:
+            # resolve_uuid_prefix returns canonical UUIDs unchanged without
+            # checking existence — so a full UUID for a non-existent idea
+            # gets here with no UPDATE match.
+            raise ValueError(f"idea not found: {idea_id}")
+        return _row_to_idea(row)
+
+
 async def get_idea(
     conn: AsyncConnection[Any],
     idea_id: str,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from luplo.core.ideas import add_idea, list_ideas, search_ideas
+from luplo.core.ideas import add_idea, list_ideas, redact_idea, search_ideas
 from luplo.core.work_units import open_work_unit
 
 
@@ -126,6 +126,85 @@ async def test_add_idea_rejects_archived_wu(
             project_id=seed_project,
             work_unit_id=wu.id,
             text="too late",
+        )
+
+
+@pytest.mark.asyncio
+async def test_redact_idea_hides_from_default_list(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="x",
+        created_by=seed_actor,
+    )
+    idea = await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="oops sensitive thing",
+        created_by=seed_actor,
+    )
+
+    redacted = await redact_idea(
+        conn,  # type: ignore[arg-type]
+        idea_id=idea.id,
+        redacted_by=seed_actor,
+    )
+    assert redacted.redacted_at is not None
+    assert redacted.redacted_by == seed_actor
+    assert redacted.text == "oops sensitive thing"  # text preserved
+
+    rows = await list_ideas(conn, work_unit_id=wu.id)  # type: ignore[arg-type]
+    assert all(r.id != idea.id for r in rows)
+
+    rows_with = await list_ideas(
+        conn,  # type: ignore[arg-type]
+        work_unit_id=wu.id,
+        include_redacted=True,
+    )
+    assert any(r.id == idea.id for r in rows_with)
+
+
+@pytest.mark.asyncio
+async def test_redact_idea_is_idempotent(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="x",
+        created_by=seed_actor,
+    )
+    idea = await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="x",
+    )
+    r1 = await redact_idea(
+        conn,  # type: ignore[arg-type]
+        idea_id=idea.id,
+        redacted_by=seed_actor,
+    )
+    r2 = await redact_idea(
+        conn,  # type: ignore[arg-type]
+        idea_id=idea.id,
+        redacted_by=seed_actor,
+    )
+    assert r1.redacted_at == r2.redacted_at  # second call is no-op
+
+
+@pytest.mark.asyncio
+async def test_redact_idea_missing_id_raises(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    with pytest.raises(ValueError, match="not found"):
+        await redact_idea(
+            conn,  # type: ignore[arg-type]
+            idea_id="00000000-0000-0000-0000-000000000099",
+            redacted_by=seed_actor,
         )
 
 
