@@ -129,6 +129,26 @@ class Link:
     created_at: datetime
 
 
+@dataclass(slots=True)
+class Idea:
+    """Append-only ideation note attached to a work unit.
+
+    Separate from ``Item`` because lifecycle and intent differ:
+    ``Idea`` is a 탐색 흔적 (exploratory trace), ``Item`` is a 확정된 기록
+    (committed record). Mistakes are recovered via the redact pattern
+    (``redacted_at`` / ``redacted_by``) — never deleted.
+    """
+
+    id: str
+    work_unit_id: str
+    project_id: str
+    text: str
+    created_at: datetime
+    created_by: str | None
+    redacted_at: datetime | None = None
+    redacted_by: str | None = None
+
+
 # ── Glossary 3 ───────────────────────────────────────────────────
 
 
