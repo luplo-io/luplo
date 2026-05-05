@@ -20,6 +20,7 @@ EXPECTED_TABLES = {
     "items_history",
     "audit_log",
     "sync_jobs",
+    "ideas",
 }
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -48,6 +49,34 @@ def test_all_tables_exist_after_upgrade(db_url: str) -> None:
     tables = _get_tables(db_url)
     missing = EXPECTED_TABLES - tables
     assert not missing, f"Missing tables after upgrade: {missing}"
+
+
+def test_migration_0008_ideas_table_columns(db_url: str) -> None:
+    """0008 creates ``ideas`` with the expected columns + indices."""
+    with psycopg.connect(db_url) as conn:
+        cols = conn.execute(
+            "SELECT column_name FROM information_schema.columns"
+            " WHERE table_name = 'ideas' ORDER BY ordinal_position"
+        ).fetchall()
+        assert [c[0] for c in cols] == [
+            "id",
+            "work_unit_id",
+            "project_id",
+            "text",
+            "created_at",
+            "created_by",
+            "redacted_at",
+            "redacted_by",
+        ]
+        idx = {
+            r[0]
+            for r in conn.execute(
+                "SELECT indexname FROM pg_indexes WHERE tablename = 'ideas'"
+            ).fetchall()
+        }
+        assert "idx_ideas_wu_created" in idx
+        assert "idx_ideas_project_created" in idx
+        assert "idx_ideas_text_fts" in idx
 
 
 def test_downgrade_removes_tables(db_url: str) -> None:
