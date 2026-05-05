@@ -860,6 +860,176 @@ async def luplo_task_block(
     )
 
 
+# ── Ideas (append-only ideation notes) ──────────────────────────
+
+
+def _parse_since(value: str) -> datetime | None:
+    """Parse the ``since``/``until`` dialect used by ``luplo_idea_search``.
+
+    Accepted forms:
+    - ``""`` (empty) → ``None``
+    - ISO datetime: ``2026-04-01`` or ``2026-04-01T12:00:00+00:00``
+    - Relative: ``7d`` / ``2w`` (last N days / weeks)
+    - Anchors: ``this_week`` / ``this_month`` / ``this_quarter``
+    """
+    if not value:
+        return None
+    now = datetime.now(UTC)
+    if value == "this_week":
+        start = now - timedelta(days=now.weekday())
+        return start.replace(hour=0, minute=0, second=0, microsecond=0)
+    if value == "this_month":
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if value == "this_quarter":
+        q_start_month = ((now.month - 1) // 3) * 3 + 1
+        return now.replace(
+            month=q_start_month, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+    if len(value) >= 2 and value[-1] in ("d", "w") and value[:-1].isdigit():
+        n = int(value[:-1])
+        delta = timedelta(days=n) if value[-1] == "d" else timedelta(weeks=n)
+        return now - delta
+    # Fallback to ISO. Naive datetimes get UTC.
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _format_idea_line(idea: Any) -> str:
+    """One-line idea summary: ``[id8] [created_at] text…`` (truncated)."""
+    text = idea.text.replace("\n", " ")
+    if len(text) > 120:
+        text = text[:117] + "…"
+    redacted = " [REDACTED]" if idea.redacted_at else ""
+    return f"- [{idea.id[:8]}] {idea.created_at:%Y-%m-%d %H:%M}{redacted} {text}"
+
+
+@mcp.tool()
+async def luplo_idea_add(
+    text: str,
+    project_id: str,
+    work_unit_id: str,
+    actor_id: str = "claude",
+) -> str:
+    """Append an ideation note to a work unit (append-only, redact-only).
+
+    Use for half-formed thoughts, exploration trails, "what if" notes —
+    anything you want to remember but is not yet a committed decision.
+    Mistakes are recovered via ``luplo_idea_redact``; ideas are never
+    deleted. Closed (done) work units accept ideas — useful for retro
+    notes. Archived / abandoned work units reject new ideas.
+    """
+    b = await _get_backend()
+    idea = await b.add_idea(
+        project_id=project_id,
+        work_unit_id=work_unit_id,
+        text=text,
+        created_by=_resolve_actor(actor_id),
+    )
+    return f"Added idea: {idea.id[:8]} (work_unit: {idea.work_unit_id[:8]})"
+
+
+@mcp.tool()
+async def luplo_idea_list(
+    work_unit_id: str,
+    limit: int = 100,
+    include_redacted: bool = False,
+) -> str:
+    """List ideas for a work unit (newest first).
+
+    Redacted ideas are excluded by default. Pass
+    ``include_redacted=True`` for audit / admin flows.
+    """
+    b = await _get_backend()
+    rows = await b.list_ideas(
+        work_unit_id=work_unit_id,
+        limit=limit,
+        include_redacted=include_redacted,
+    )
+    if not rows:
+        return "No ideas."
+    lines = [f"Found {len(rows)} idea(s):"]
+    lines.extend(_format_idea_line(r) for r in rows)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def luplo_idea_search(
+    project_id: str,
+    query: str = "",
+    tsquery: str = "",
+    work_unit_id: str = "",
+    author: str = "",
+    since: str = "",
+    until: str = "",
+    include_redacted: bool = False,
+    limit: int = 50,
+) -> str:
+    """Full-text search over ideas in a project (optionally narrowed by WU).
+
+    Glossary expansion applies to *query*. Use *tsquery* for the raw
+    ``to_tsquery`` escape hatch (no glossary). Time filters accept ISO
+    datetime, ``Nd`` / ``Nw`` (last N days / weeks), or
+    ``this_week`` / ``this_month`` / ``this_quarter``.
+
+    *author* takes a full actor id. (Caller resolves "me" itself.)
+
+    Redacted ideas are excluded by default. Pass
+    ``include_redacted=True`` for audit / admin flows.
+
+    Caller LLMs should decompose natural-language queries into the
+    appropriate ``query`` / ``since`` / ``author`` parameters on the
+    client side. This tool itself is deterministic.
+
+    Worked examples:
+
+    1. User says: "지난주 OAuth 리프레시 토큰 관련 아이디어"
+       → call ``luplo_idea_search(project_id=..., query="OAuth refresh token 리프레시 토큰", since="7d")``
+
+    2. User says: "내가 이번 분기에 적은 검색 인프라 idea"
+       → resolve "내가" → caller's actor_id; then call
+       ``luplo_idea_search(project_id=..., query="검색 인프라", author="<my-actor-id>", since="this_quarter")``
+    """
+    b = await _get_backend()
+    rows = await b.search_ideas(
+        project_id=project_id,
+        query=query or None,
+        tsquery=tsquery or None,
+        work_unit_id=work_unit_id or None,
+        author=author or None,
+        since=_parse_since(since),
+        until=_parse_since(until),
+        include_redacted=include_redacted,
+        limit=limit,
+    )
+    if not rows:
+        return "No ideas matched."
+    lines = [f"Found {len(rows)} idea(s):"]
+    lines.extend(_format_idea_line(r) for r in rows)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def luplo_idea_redact(
+    idea_id: str,
+    actor_id: str = "claude",
+) -> str:
+    """Mark an idea redacted (idempotent — no-op if already redacted).
+
+    Hides the idea from default list/search results. The row, text, and
+    audit metadata are preserved; redacted_at and redacted_by are
+    stamped. Use for mistakes, secrets accidentally pasted in, or
+    sensitive content that should not surface in normal flows.
+    """
+    b = await _get_backend()
+    idea = await b.redact_idea(
+        idea_id=idea_id,
+        redacted_by=_resolve_actor(actor_id),
+    )
+    return f"Redacted idea: {idea.id[:8]} (at {idea.redacted_at:%Y-%m-%d %H:%M})"
+
+
 # ── QA Checks ────────────────────────────────────────────────────
 
 

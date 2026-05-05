@@ -18,6 +18,7 @@ from luplo.core import (
     audit,
     glossary,
     history,
+    ideas,
     items,
     links,
     projects,
@@ -42,6 +43,7 @@ from luplo.core.models import (
     GlossaryRejection,
     GlossaryTerm,
     HistoryEntry,
+    Idea,
     Item,
     ItemCreate,
     ItemType,
@@ -1065,6 +1067,77 @@ class LocalBackend:
                 },
             )
             return new
+
+    # ── Ideas (append-only ideation notes) ───────────────────────
+
+    async def add_idea(
+        self,
+        *,
+        project_id: str,
+        work_unit_id: str,
+        text: str,
+        created_by: str | None = None,
+    ) -> Idea:
+        async with self.pool.connection() as conn:
+            return await ideas.add_idea(
+                conn,
+                project_id=project_id,
+                work_unit_id=work_unit_id,
+                text=text,
+                created_by=created_by,
+            )
+
+    async def list_ideas(
+        self,
+        *,
+        work_unit_id: str,
+        limit: int = 100,
+        include_redacted: bool = False,
+    ) -> list[Idea]:
+        async with self.pool.connection() as conn:
+            return await ideas.list_ideas(
+                conn,
+                work_unit_id=work_unit_id,
+                limit=limit,
+                include_redacted=include_redacted,
+            )
+
+    async def search_ideas(
+        self,
+        *,
+        project_id: str,
+        query: str | None = None,
+        tsquery: str | None = None,
+        work_unit_id: str | None = None,
+        author: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        include_redacted: bool = False,
+        limit: int = 50,
+    ) -> list[Idea]:
+        async with self.pool.connection() as conn:
+            return await ideas.search_ideas(
+                conn,
+                project_id=project_id,
+                query=query,
+                tsquery=tsquery,
+                work_unit_id=work_unit_id,
+                author=author,
+                since=since,
+                until=until,
+                include_redacted=include_redacted,
+                limit=limit,
+            )
+
+    async def get_idea(self, idea_id: str) -> Idea | None:
+        async with self.pool.connection() as conn:
+            return await ideas.get_idea(conn, idea_id)
+
+    async def redact_idea(self, *, idea_id: str, redacted_by: str) -> Idea:
+        async with self.pool.connection() as conn:
+            return await ideas.redact_idea(
+                conn, idea_id=idea_id, redacted_by=redacted_by
+            )
 
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 

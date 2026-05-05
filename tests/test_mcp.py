@@ -49,6 +49,10 @@ def test_mcp_tools_registered() -> None:
         "luplo_qa_pass",
         "luplo_qa_fail",
         "luplo_qa_list_pending",
+        "luplo_idea_add",
+        "luplo_idea_list",
+        "luplo_idea_search",
+        "luplo_idea_redact",
     }
     missing = expected - tool_names
     assert not missing, f"Missing MCP tools: {missing}"
@@ -56,7 +60,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 25
+    assert len(tools) == 29
 
 
 # ── Invocation tests ────────────────────────────────────────────
