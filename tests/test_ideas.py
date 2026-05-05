@@ -128,6 +128,162 @@ async def test_add_idea_rejects_archived_wu(
 
 
 @pytest.mark.asyncio
+async def test_add_idea_rejects_abandoned_wu(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """abandoned status must reject new ideas (mirrors archived)."""
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="x",
+        created_by=seed_actor,
+    )
+    await conn.execute(  # type: ignore[attr-defined]
+        "UPDATE work_units SET status = 'abandoned' WHERE id = %s",
+        (wu.id,),
+    )
+    with pytest.raises(ValueError, match="abandoned"):
+        await add_idea(
+            conn,  # type: ignore[arg-type]
+            project_id=seed_project,
+            work_unit_id=wu.id,
+            text="too late",
+        )
+
+
+@pytest.mark.asyncio
+async def test_add_idea_resolves_wu_prefix(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """8+ hex prefix must resolve to full WU id (CLI/MCP help promises this)."""
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="prefix-target",
+        created_by=seed_actor,
+    )
+    idea = await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id[:8],
+        text="via prefix",
+    )
+    assert idea.work_unit_id == wu.id
+
+
+@pytest.mark.asyncio
+async def test_list_ideas_resolves_wu_prefix(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="prefix-list",
+        created_by=seed_actor,
+    )
+    await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="row",
+    )
+    rows = await list_ideas(
+        conn,  # type: ignore[arg-type]
+        work_unit_id=wu.id[:8],
+    )
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_ideas_rejects_invalid_limit(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="x",
+        created_by=seed_actor,
+    )
+    with pytest.raises(ValueError, match="limit"):
+        await list_ideas(
+            conn,  # type: ignore[arg-type]
+            work_unit_id=wu.id,
+            limit=0,
+        )
+    with pytest.raises(ValueError, match="limit"):
+        await list_ideas(
+            conn,  # type: ignore[arg-type]
+            work_unit_id=wu.id,
+            limit=-1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_ideas_rejects_invalid_limit(conn: object, seed_project: str) -> None:
+    with pytest.raises(ValueError, match="limit"):
+        await search_ideas(
+            conn,  # type: ignore[arg-type]
+            project_id=seed_project,
+            limit=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_redact_idea_with_project_scope(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """redact_idea takes project_id to scope prefix resolution."""
+    from luplo.core.ideas import redact_idea
+
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="x",
+        created_by=seed_actor,
+    )
+    idea = await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="redact target",
+        created_by=seed_actor,
+    )
+    redacted = await redact_idea(
+        conn,  # type: ignore[arg-type]
+        idea_id=idea.id,
+        redacted_by=seed_actor,
+        project_id=seed_project,
+    )
+    assert redacted.redacted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_search_ideas_filter_only_no_query(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    """search_ideas must allow filter-only mode (no query, no tsquery)."""
+    wu = await open_work_unit(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        title="x",
+        created_by=seed_actor,
+    )
+    await add_idea(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        work_unit_id=wu.id,
+        text="anything",
+        created_by=seed_actor,
+    )
+    rows = await search_ideas(
+        conn,  # type: ignore[arg-type]
+        project_id=seed_project,
+        author=seed_actor,
+    )
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
 async def test_redact_idea_hides_from_default_list(
     conn: object, seed_project: str, seed_actor: str
 ) -> None:

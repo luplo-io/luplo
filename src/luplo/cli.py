@@ -13,7 +13,6 @@ import tomllib
 import uuid
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, cast
@@ -1590,18 +1589,26 @@ def idea_add(
 
 @idea_app.command("ls")
 def idea_ls(
-    work_unit: str = typer.Option(..., "--wu", "-w", help="Work unit (UUID or 8+ hex prefix)."),
+    work_unit: str | None = typer.Option(
+        None,
+        "--wu",
+        "-w",
+        help="Work unit (UUID or 8+ hex prefix). Defaults to active WU.",
+    ),
     limit: int = typer.Option(100, "--limit"),
     include_redacted: bool = typer.Option(
         False, "--include-redacted", help="Include redacted ideas in the listing."
     ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
     """List ideas for a work unit, newest first."""
+    pid = _cfg_project(project)
 
     async def _do() -> None:
         async with _backend() as b:
+            wu_id = work_unit or await _resolve_active_wu_or_exit(b, pid)
             rows = await b.list_ideas(
-                work_unit_id=work_unit,
+                work_unit_id=wu_id,
                 limit=limit,
                 include_redacted=include_redacted,
             )
@@ -1616,7 +1623,9 @@ def idea_ls(
 
 @idea_app.command("find")
 def idea_find(
-    query: list[str] = typer.Argument(..., help="Search query (joined with spaces)."),
+    query: list[str] | None = typer.Argument(
+        None, help="Search query (joined with spaces). Omit for filter-only search."
+    ),
     work_unit: str | None = typer.Option(None, "--wu", "-w", help="Narrow to one work unit."),
     author: str | None = typer.Option(None, "--author", help="Filter by actor id."),
     since: str | None = typer.Option(
@@ -1627,30 +1636,18 @@ def idea_find(
     limit: int = typer.Option(50, "--limit"),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
-    """Full-text search over ideas in a project."""
-    pid = _cfg_project(project)
-    q = " ".join(query)
+    """Full-text search over ideas in a project. All filters are optional."""
+    from luplo.core.timeparse import parse_since
 
-    def _parse_relative(value: str | None) -> datetime | None:
-        if not value:
-            return None
-        now = datetime.now(UTC)
-        if value == "this_week":
-            start = now - timedelta(days=now.weekday())
-            return start.replace(hour=0, minute=0, second=0, microsecond=0)
-        if value == "this_month":
-            return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if value == "this_quarter":
-            qm = ((now.month - 1) // 3) * 3 + 1
-            return now.replace(month=qm, day=1, hour=0, minute=0, second=0, microsecond=0)
-        if len(value) >= 2 and value[-1] in ("d", "w") and value[:-1].isdigit():
-            n = int(value[:-1])
-            delta = timedelta(days=n) if value[-1] == "d" else timedelta(weeks=n)
-            return now - delta
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=UTC)
-        return parsed
+    pid = _cfg_project(project)
+    q = " ".join(query) if query else None
+
+    try:
+        since_dt = parse_since(since)
+        until_dt = parse_since(until)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(2) from exc
 
     async def _do() -> None:
         async with _backend() as b:
@@ -1659,8 +1656,8 @@ def idea_find(
                 query=q,
                 work_unit_id=work_unit,
                 author=author,
-                since=_parse_relative(since),
-                until=_parse_relative(until),
+                since=since_dt,
+                until=until_dt,
                 include_redacted=include_redacted,
                 limit=limit,
             )
@@ -1677,13 +1674,16 @@ def idea_find(
 def idea_redact(
     idea_id: str = typer.Argument(..., help="Idea id (full UUID or 8+ hex prefix)."),
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
-    """Mark an idea redacted (idempotent)."""
+    """Mark an idea redacted (idempotent). --project scopes prefix resolution."""
     aid = _cfg_actor(actor)
+    cfg = load_config()
+    pid: str | None = project or cfg.project_id or None
 
     async def _do() -> None:
         async with _backend() as b:
-            idea = await b.redact_idea(idea_id=idea_id, redacted_by=aid)
+            idea = await b.redact_idea(idea_id=idea_id, redacted_by=aid, project_id=pid)
             typer.echo(f"Redacted idea: {idea.id[:8]} (at {idea.redacted_at:%Y-%m-%d %H:%M})")
 
     _run(_do())

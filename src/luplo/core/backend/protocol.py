@@ -283,9 +283,15 @@ class Backend(Protocol):
         limit: int = 50,
     ) -> list[Idea]: ...
 
-    async def get_idea(self, idea_id: str) -> Idea | None: ...
+    async def get_idea(self, idea_id: str, *, project_id: str | None = None) -> Idea | None: ...
 
-    async def redact_idea(self, *, idea_id: str, redacted_by: str) -> Idea: ...
+    async def redact_idea(
+        self,
+        *,
+        idea_id: str,
+        redacted_by: str,
+        project_id: str | None = None,
+    ) -> Idea: ...
 
     # ── Work Units ───────────────────────────────────────────────
 

@@ -1079,13 +1079,23 @@ class LocalBackend:
         created_by: str | None = None,
     ) -> Idea:
         async with self.pool.connection() as conn:
-            return await ideas.add_idea(
+            idea = await ideas.add_idea(
                 conn,
                 project_id=project_id,
                 work_unit_id=work_unit_id,
                 text=text,
                 created_by=created_by,
             )
+            if created_by:
+                await audit.record_audit(
+                    conn,
+                    actor_id=created_by,
+                    action="idea.create",
+                    target_type="idea",
+                    target_id=idea.id,
+                    metadata={"work_unit_id": idea.work_unit_id},
+                )
+            return idea
 
     async def list_ideas(
         self,
@@ -1129,13 +1139,32 @@ class LocalBackend:
                 limit=limit,
             )
 
-    async def get_idea(self, idea_id: str) -> Idea | None:
+    async def get_idea(self, idea_id: str, *, project_id: str | None = None) -> Idea | None:
         async with self.pool.connection() as conn:
-            return await ideas.get_idea(conn, idea_id)
+            return await ideas.get_idea(conn, idea_id, project_id=project_id)
 
-    async def redact_idea(self, *, idea_id: str, redacted_by: str) -> Idea:
+    async def redact_idea(
+        self,
+        *,
+        idea_id: str,
+        redacted_by: str,
+        project_id: str | None = None,
+    ) -> Idea:
         async with self.pool.connection() as conn:
-            return await ideas.redact_idea(conn, idea_id=idea_id, redacted_by=redacted_by)
+            idea = await ideas.redact_idea(
+                conn,
+                idea_id=idea_id,
+                redacted_by=redacted_by,
+                project_id=project_id,
+            )
+            await audit.record_audit(
+                conn,
+                actor_id=redacted_by,
+                action="idea.redact",
+                target_type="idea",
+                target_id=idea.id,
+            )
+            return idea
 
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 

@@ -33,6 +33,7 @@ from luplo.core.backend.remote import RemoteBackend
 from luplo.core.db import create_pool
 from luplo.core.import_pipeline.manifest import SourceFile
 from luplo.core.models import Item, ItemCreate
+from luplo.core.timeparse import parse_since
 
 mcp = FastMCP(
     "luplo",
@@ -863,37 +864,6 @@ async def luplo_task_block(
 # ── Ideas (append-only ideation notes) ──────────────────────────
 
 
-def _parse_since(value: str) -> datetime | None:
-    """Parse the ``since``/``until`` dialect used by ``luplo_idea_search``.
-
-    Accepted forms:
-    - ``""`` (empty) → ``None``
-    - ISO datetime: ``2026-04-01`` or ``2026-04-01T12:00:00+00:00``
-    - Relative: ``7d`` / ``2w`` (last N days / weeks)
-    - Anchors: ``this_week`` / ``this_month`` / ``this_quarter``
-    """
-    if not value:
-        return None
-    now = datetime.now(UTC)
-    if value == "this_week":
-        start = now - timedelta(days=now.weekday())
-        return start.replace(hour=0, minute=0, second=0, microsecond=0)
-    if value == "this_month":
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if value == "this_quarter":
-        q_start_month = ((now.month - 1) // 3) * 3 + 1
-        return now.replace(month=q_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
-    if len(value) >= 2 and value[-1] in ("d", "w") and value[:-1].isdigit():
-        n = int(value[:-1])
-        delta = timedelta(days=n) if value[-1] == "d" else timedelta(weeks=n)
-        return now - delta
-    # Fallback to ISO. Naive datetimes get UTC.
-    parsed = datetime.fromisoformat(value)
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed
-
-
 def _format_idea_line(idea: Any) -> str:
     """One-line idea summary: ``[id8] [created_at] text…`` (truncated)."""
     text = idea.text.replace("\n", " ")
@@ -1001,14 +971,19 @@ async def luplo_idea_search(
            )
     """
     b = await _get_backend()
+    try:
+        since_dt = parse_since(since)
+        until_dt = parse_since(until)
+    except ValueError as exc:
+        return f"Error: {exc}"
     rows = await b.search_ideas(
         project_id=project_id,
         query=query or None,
         tsquery=tsquery or None,
         work_unit_id=work_unit_id or None,
         author=author or None,
-        since=_parse_since(since),
-        until=_parse_since(until),
+        since=since_dt,
+        until=until_dt,
         include_redacted=include_redacted,
         limit=limit,
     )
@@ -1023,18 +998,26 @@ async def luplo_idea_search(
 async def luplo_idea_redact(
     idea_id: str,
     actor_id: str = "claude",
+    project_id: str = "",
 ) -> str:
     """Mark an idea redacted (idempotent — no-op if already redacted).
 
-    Hides the idea from default list/search results. The row, text, and
-    audit metadata are preserved; redacted_at and redacted_by are
-    stamped. Use for mistakes, secrets accidentally pasted in, or
-    sensitive content that should not surface in normal flows.
+    Hides the idea from default list/search results. The row and ``text``
+    column are **preserved** (audit metadata, not deletion); redacted_at
+    and redacted_by are stamped. Default list/search will not return this
+    row, but ``include_redacted=True`` callers (audit / admin flows) still
+    see the original text. Use for mistakes or content that shouldn't
+    surface in normal flows; do **not** use this as a secret-scrubbing
+    mechanism.
+
+    ``project_id`` (when provided) scopes prefix resolution so an 8-char
+    prefix collision in another project cannot accidentally match.
     """
     b = await _get_backend()
     idea = await b.redact_idea(
         idea_id=idea_id,
         redacted_by=_resolve_actor(actor_id),
+        project_id=project_id or None,
     )
     return f"Redacted idea: {idea.id[:8]} (at {idea.redacted_at:%Y-%m-%d %H:%M})"
 
