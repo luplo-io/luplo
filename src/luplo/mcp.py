@@ -936,7 +936,7 @@ async def luplo_idea_list(
     query on ``luplo_idea_search`` is rejected — fetching raw redacted
     content requires a SaaS-side admin path.
     """
-    from luplo.core.errors import NotFoundError, ValidationError
+    from luplo.core.errors import ValidationError
 
     if not project_id:
         return "Error: project_id is required."
@@ -948,7 +948,9 @@ async def luplo_idea_list(
             limit=limit,
             include_redacted=include_redacted,
         )
-    except (NotFoundError, ValidationError) as exc:
+    except ValidationError as exc:
+        # list_ideas returns [] for not-found WU; only ValidationError
+        # (bad limit) escapes here.
         return f"Error: {exc.message}"
     if not rows:
         return "No ideas."
@@ -1013,7 +1015,7 @@ async def luplo_idea_search(
                since="this_quarter",
            )
     """
-    from luplo.core.errors import NotFoundError, ValidationError
+    from luplo.core.errors import ValidationError
 
     b = await _get_backend()
     try:
@@ -1033,7 +1035,9 @@ async def luplo_idea_search(
             include_redacted=include_redacted,
             limit=limit,
         )
-    except (NotFoundError, ValidationError) as exc:
+    except ValidationError as exc:
+        # search_ideas returns [] for not-found WU; only ValidationError
+        # (bad limit, query+tsquery, oracle gate) escapes here.
         return f"Error: {exc.message}"
     if not rows:
         return "No ideas matched."
