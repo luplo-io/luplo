@@ -14,6 +14,7 @@ import httpx
 from luplo.core.impact import ImpactEdge, ImpactNode, ImpactResult
 from luplo.core.models import (
     HistoryEntry,
+    Idea,
     Item,
     ItemCreate,
     Project,
@@ -272,6 +273,58 @@ class RemoteBackend:
         resp = await self._client.get("/history", params=params)
         resp.raise_for_status()
         return [_parse_history_entry(e) for e in resp.json()]
+
+    # ── Ideas (HTTP endpoints land in luplo-saas — stubs for now) ────
+
+    async def add_idea(
+        self,
+        *,
+        project_id: str,
+        work_unit_id: str,
+        text: str,
+        created_by: str | None = None,
+    ) -> Idea:
+        raise NotImplementedError(
+            "ideas are not yet exposed on the remote (cloud) backend; "
+            "use local mode (lp init) or wait for the next luplo-cloud release"
+        )
+
+    async def list_ideas(
+        self,
+        *,
+        work_unit_id: str,
+        project_id: str | None = None,
+        limit: int = 100,
+        include_redacted: bool = False,
+    ) -> list[Idea]:
+        raise NotImplementedError("ideas are not yet exposed on the remote (cloud) backend")
+
+    async def search_ideas(
+        self,
+        *,
+        project_id: str,
+        query: str | None = None,
+        tsquery: str | None = None,
+        work_unit_id: str | None = None,
+        author: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        include_redacted: bool = False,
+        limit: int = 50,
+    ) -> list[Idea]:
+        raise NotImplementedError("ideas are not yet exposed on the remote (cloud) backend")
+
+    async def get_idea(self, idea_id: str, *, project_id: str | None = None) -> Idea | None:
+        raise NotImplementedError("ideas are not yet exposed on the remote (cloud) backend")
+
+    async def redact_idea(
+        self,
+        *,
+        idea_id: str,
+        redacted_by: str,
+        project_id: str | None = None,
+    ) -> tuple[Idea, bool]:
+        raise NotImplementedError("ideas are not yet exposed on the remote (cloud) backend")
 
 
 # ── Parsers ──────────────────────────────────────────────────────

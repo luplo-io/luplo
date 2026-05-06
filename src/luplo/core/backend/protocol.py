@@ -19,6 +19,7 @@ from luplo.core.models import (
     GlossaryRejection,
     GlossaryTerm,
     HistoryEntry,
+    Idea,
     Item,
     ItemCreate,
     ItemType,
@@ -248,6 +249,56 @@ class Backend(Protocol):
         assignee_actor_id: str,
         project_id: str | None = None,
     ) -> Item: ...
+
+    # ── Ideas (append-only ideation notes) ───────────────────────
+
+    async def add_idea(
+        self,
+        *,
+        project_id: str,
+        work_unit_id: str,
+        text: str,
+        created_by: str | None = None,
+    ) -> Idea: ...
+
+    async def list_ideas(
+        self,
+        *,
+        work_unit_id: str,
+        project_id: str | None = None,
+        limit: int = 100,
+        include_redacted: bool = False,
+    ) -> list[Idea]: ...
+
+    async def search_ideas(
+        self,
+        *,
+        project_id: str,
+        query: str | None = None,
+        tsquery: str | None = None,
+        work_unit_id: str | None = None,
+        author: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        include_redacted: bool = False,
+        limit: int = 50,
+    ) -> list[Idea]: ...
+
+    async def get_idea(self, idea_id: str, *, project_id: str | None = None) -> Idea | None: ...
+
+    async def redact_idea(
+        self,
+        *,
+        idea_id: str,
+        redacted_by: str,
+        project_id: str | None = None,
+    ) -> tuple[Idea, bool]:
+        """Redact an idea; return ``(idea, newly_redacted)``.
+
+        ``newly_redacted=False`` indicates an idempotent retry — the row
+        was already redacted, so callers should skip side-effects.
+        """
+        ...
 
     # ── Work Units ───────────────────────────────────────────────
 

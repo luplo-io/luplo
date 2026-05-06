@@ -66,6 +66,7 @@ glossary_group_app = typer.Typer(name="group", help="Manage glossary groups.")
 glossary_term_app = typer.Typer(name="term", help="Manage glossary terms.")
 task_app = typer.Typer(name="task", help="Manage tasks (item_type='task').")
 qa_app = typer.Typer(name="qa", help="Manage QA checks (item_type='qa_check').")
+idea_app = typer.Typer(name="idea", help="Append-only ideation notes on a work unit.")
 import_app = typer.Typer(name="import", help="Import spec/plan markdown into a luplo work_unit.")
 
 app.add_typer(items_app)
@@ -76,6 +77,7 @@ glossary_app.add_typer(glossary_group_app)
 glossary_app.add_typer(glossary_term_app)
 app.add_typer(task_app)
 app.add_typer(qa_app)
+app.add_typer(idea_app)
 app.add_typer(import_app)
 
 
@@ -175,6 +177,7 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
         IdTooShortError,
         InvalidIdFormatError,
         NotFoundError,
+        ValidationError,
     )
 
     try:
@@ -198,6 +201,9 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     except ConflictError as exc:
         # Catches TaskStateTransitionError, QAStateTransitionError,
         # TaskAlreadyInProgressError, WorkUnitHasActiveTasksError, etc.
+        typer.echo(f"Error: {exc.message}", err=True)
+        raise typer.Exit(2) from exc
+    except ValidationError as exc:
         typer.echo(f"Error: {exc.message}", err=True)
         raise typer.Exit(2) from exc
 
@@ -1525,6 +1531,188 @@ def qa_assign(
         async with _backend() as b:
             q = await b.assign_qa(qa_id, actor_id=aid, assignee_actor_id=assignee, project_id=pid)
             _print_qa(q)
+
+    _run(_do())
+
+
+# ── Ideas ────────────────────────────────────────────────────────
+
+
+async def _resolve_active_wu_or_exit(b: Any, project_id: str) -> str:
+    rows = await b.list_work_units(project_id, status="in_progress")
+    if not rows:
+        typer.echo(
+            "No active work unit. Pass --wu <id> or run 'lp work open <title>'.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    if len(rows) > 1:
+        typer.echo(
+            f"Multiple active work units ({len(rows)}). Pass --wu <id> explicitly.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    return rows[0].id
+
+
+def _print_idea(idea: Any) -> None:
+    # Mask redacted text on the public surface — the row stays visible
+    # for audit (id + timestamps + redacted_by) but original content is
+    # withheld. Fetching raw text requires the SaaS-side `get_idea`
+    # admin path.
+    if idea.redacted_at:
+        body = "[redacted]"
+        redacted = " [REDACTED]"
+    else:
+        body = idea.text.replace("\n", " ")
+        if len(body) > 120:
+            body = body[:117] + "…"
+        redacted = ""
+    typer.echo(f"  {idea.id[:8]}  {idea.created_at:%Y-%m-%d %H:%M}{redacted}  {body}")
+
+
+@idea_app.command("add")
+def idea_add(
+    text: list[str] = typer.Argument(..., help="Idea text (joined with spaces)."),
+    work_unit: str | None = typer.Option(
+        None, "--wu", "-w", help="Work unit (UUID or 8+ hex prefix). Defaults to active WU."
+    ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Append an ideation note to a work unit (append-only, redact-only)."""
+    pid = _cfg_project(project)
+    aid = _cfg_actor(actor)
+    body = " ".join(text)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            wu_id = work_unit or await _resolve_active_wu_or_exit(b, pid)
+            idea = await b.add_idea(
+                project_id=pid,
+                work_unit_id=wu_id,
+                text=body,
+                created_by=aid,
+            )
+            typer.echo(f"Added idea: {idea.id[:8]} (work_unit: {idea.work_unit_id[:8]})")
+
+    _run(_do())
+
+
+@idea_app.command("ls")
+def idea_ls(
+    work_unit: str | None = typer.Option(
+        None,
+        "--wu",
+        "-w",
+        help="Work unit (UUID or 8+ hex prefix). Defaults to active WU.",
+    ),
+    limit: int = typer.Option(100, "--limit"),
+    include_redacted: bool = typer.Option(
+        False, "--include-redacted", help="Include redacted ideas in the listing."
+    ),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+) -> None:
+    """List ideas for a work unit, newest first."""
+    pid = _cfg_project(project)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            wu_id = work_unit or await _resolve_active_wu_or_exit(b, pid)
+            rows = await b.list_ideas(
+                work_unit_id=wu_id,
+                project_id=pid,
+                limit=limit,
+                include_redacted=include_redacted,
+            )
+            if not rows:
+                typer.echo("No ideas.")
+                return
+            for r in rows:
+                _print_idea(r)
+
+    _run(_do())
+
+
+@idea_app.command("find")
+def idea_find(
+    query: list[str] | None = typer.Argument(
+        None, help="Search query (joined with spaces). Omit for filter-only search."
+    ),
+    work_unit: str | None = typer.Option(None, "--wu", "-w", help="Narrow to one work unit."),
+    author: str | None = typer.Option(None, "--author", help="Filter by actor id."),
+    since: str | None = typer.Option(
+        None, "--since", help="ISO datetime, Nd/Nw, or this_week/this_month/this_quarter."
+    ),
+    until: str | None = typer.Option(
+        None,
+        "--until",
+        help="ISO datetime or Nd/Nw. Anchors (this_week / this_month / "
+        "this_quarter) are since-only and rejected here.",
+    ),
+    include_redacted: bool = typer.Option(
+        False,
+        "--include-redacted",
+        help="Include redacted rows in the listing (filter-only — cannot "
+        "be combined with a text query, which would leak via match/no-match).",
+    ),
+    limit: int = typer.Option(50, "--limit"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+) -> None:
+    """Full-text search over ideas in a project. All filters are optional."""
+    from luplo.core.timeparse import parse_since
+
+    pid = _cfg_project(project)
+    q = " ".join(query) if query else None
+
+    try:
+        since_dt = parse_since(since, mode="since")
+        until_dt = parse_since(until, mode="until")
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    async def _do() -> None:
+        async with _backend() as b:
+            rows = await b.search_ideas(
+                project_id=pid,
+                query=q,
+                work_unit_id=work_unit,
+                author=author,
+                since=since_dt,
+                until=until_dt,
+                include_redacted=include_redacted,
+                limit=limit,
+            )
+            if not rows:
+                typer.echo("No ideas matched.")
+                return
+            for r in rows:
+                _print_idea(r)
+
+    _run(_do())
+
+
+@idea_app.command("redact")
+def idea_redact(
+    idea_id: str = typer.Argument(..., help="Idea id (full UUID or 8+ hex prefix)."),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+) -> None:
+    """Mark an idea redacted (idempotent).
+
+    ``--project`` scopes prefix resolution **and** the SQL predicate so a
+    full UUID from another project cannot mutate this row. Aligned with
+    the rest of ``lp idea`` — uses ``_cfg_project`` like the others.
+    """
+    pid = _cfg_project(project)
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            idea, newly = await b.redact_idea(idea_id=idea_id, redacted_by=aid, project_id=pid)
+            verb = "Redacted" if newly else "Already redacted"
+            typer.echo(f"{verb} idea: {idea.id[:8]} (at {idea.redacted_at:%Y-%m-%d %H:%M})")
 
     _run(_do())
 

@@ -49,6 +49,10 @@ def test_mcp_tools_registered() -> None:
         "luplo_qa_pass",
         "luplo_qa_fail",
         "luplo_qa_list_pending",
+        "luplo_idea_add",
+        "luplo_idea_list",
+        "luplo_idea_search",
+        "luplo_idea_redact",
     }
     missing = expected - tool_names
     assert not missing, f"Missing MCP tools: {missing}"
@@ -56,7 +60,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 25
+    assert len(tools) == 29
 
 
 # ── Invocation tests ────────────────────────────────────────────
@@ -568,3 +572,166 @@ def test_resolve_actor_sentinel_without_config(
     monkeypatch.setattr(mcp_mod, "load_config", lambda: LuploConfig())
     with pytest.raises(ValueError):
         mcp_mod._resolve_actor("claude")
+
+
+# ── Ideas (luplo_idea_add / list / search / redact) ─────────────
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_add_and_list(mcp_backend: Any) -> None:
+    open_out = await mcp_mod.luplo_work_open(
+        title="MCP idea WU",
+        project_id=_MCP_PROJECT,
+        actor_id=_MCP_ACTOR,
+    )
+    wu_id = _wu_id_from_text(open_out)
+
+    added = await mcp_mod.luplo_idea_add(
+        text="refresh token rotation thought",
+        project_id=_MCP_PROJECT,
+        work_unit_id=wu_id,
+        actor_id=_MCP_ACTOR,
+    )
+    assert "Added idea" in added
+
+    listed = await mcp_mod.luplo_idea_list(work_unit_id=wu_id, project_id=_MCP_PROJECT)
+    assert "refresh token rotation" in listed
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_add_rejects_empty_text(mcp_backend: Any) -> None:
+    open_out = await mcp_mod.luplo_work_open(
+        title="empty-text WU",
+        project_id=_MCP_PROJECT,
+        actor_id=_MCP_ACTOR,
+    )
+    wu_id = _wu_id_from_text(open_out)
+    out = await mcp_mod.luplo_idea_add(
+        text="   ",
+        project_id=_MCP_PROJECT,
+        work_unit_id=wu_id,
+        actor_id=_MCP_ACTOR,
+    )
+    # Domain ValidationError must surface as a clean "Error: ..." string,
+    # not a raw traceback (round-2 threat finding).
+    assert out.startswith("Error:")
+    assert "empty" in out.lower()
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_list_requires_project_id(mcp_backend: Any) -> None:
+    """Round 2 R1: empty project_id must be rejected, not silently global."""
+    out = await mcp_mod.luplo_idea_list(work_unit_id=str(uuid.uuid4()), project_id="")
+    assert out.startswith("Error:")
+    assert "project_id" in out
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_redact_requires_project_id(mcp_backend: Any) -> None:
+    """Round 2 R1: redact also rejects empty project_id (no cross-project mutation)."""
+    out = await mcp_mod.luplo_idea_redact(idea_id=str(uuid.uuid4()), project_id="")
+    assert out.startswith("Error:")
+    assert "project_id" in out
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_redact_idempotent(mcp_backend: Any) -> None:
+    open_out = await mcp_mod.luplo_work_open(
+        title="redact WU",
+        project_id=_MCP_PROJECT,
+        actor_id=_MCP_ACTOR,
+    )
+    wu_id = _wu_id_from_text(open_out)
+    added = await mcp_mod.luplo_idea_add(
+        text="thought to redact",
+        project_id=_MCP_PROJECT,
+        work_unit_id=wu_id,
+        actor_id=_MCP_ACTOR,
+    )
+    # "Added idea: <id8> (work_unit: <wu8>)" — pull id8
+    import re
+
+    m = re.search(r"Added idea: ([0-9a-f]{8})", added)
+    assert m, added
+    idea_short = m.group(1)
+
+    first = await mcp_mod.luplo_idea_redact(
+        idea_id=idea_short,
+        project_id=_MCP_PROJECT,
+        actor_id=_MCP_ACTOR,
+    )
+    assert first.startswith("Redacted ")
+    second = await mcp_mod.luplo_idea_redact(
+        idea_id=idea_short,
+        project_id=_MCP_PROJECT,
+        actor_id=_MCP_ACTOR,
+    )
+    assert second.startswith("Already redacted ")
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_redact_unknown_id_clean_error(mcp_backend: Any) -> None:
+    """Round 2 threat finding: NotFoundError must surface as clean error, not raw."""
+    out = await mcp_mod.luplo_idea_redact(
+        idea_id=str(uuid.uuid4()),
+        project_id=_MCP_PROJECT,
+        actor_id=_MCP_ACTOR,
+    )
+    assert out.startswith("Error:")
+    assert "not found" in out.lower()
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_search_filter_only_and_include_redacted(mcp_backend: Any) -> None:
+    open_out = await mcp_mod.luplo_work_open(
+        title="search WU",
+        project_id=_MCP_PROJECT,
+        actor_id=_MCP_ACTOR,
+    )
+    wu_id = _wu_id_from_text(open_out)
+    await mcp_mod.luplo_idea_add(
+        text="visible search target",
+        project_id=_MCP_PROJECT,
+        work_unit_id=wu_id,
+        actor_id=_MCP_ACTOR,
+    )
+    # Filter-only mode (no query) — proves the tool path runs without
+    # the FTS predicate.
+    out = await mcp_mod.luplo_idea_search(
+        project_id=_MCP_PROJECT,
+        work_unit_id=wu_id,
+    )
+    assert "visible search target" in out
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_search_blocks_keyword_oracle(mcp_backend: Any) -> None:
+    """Round 2 R3: include_redacted=True with a text query is rejected."""
+    out = await mcp_mod.luplo_idea_search(
+        project_id=_MCP_PROJECT,
+        query="anything",
+        include_redacted=True,
+    )
+    assert out.startswith("Error:")
+    assert "oracle" in out.lower()
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_search_garbage_since_helpful_error(mcp_backend: Any) -> None:
+    """parse_since errors get caught and surfaced as Error: ..."""
+    out = await mcp_mod.luplo_idea_search(
+        project_id=_MCP_PROJECT,
+        since="yesterday",
+    )
+    assert out.startswith("Error:")
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_idea_search_until_anchor_rejected(mcp_backend: Any) -> None:
+    """Round 2 B3: anchors are since-only; until=this_month must error."""
+    out = await mcp_mod.luplo_idea_search(
+        project_id=_MCP_PROJECT,
+        until="this_month",
+    )
+    assert out.startswith("Error:")
+    assert "since-only" in out

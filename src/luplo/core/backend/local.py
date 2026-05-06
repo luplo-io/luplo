@@ -18,6 +18,7 @@ from luplo.core import (
     audit,
     glossary,
     history,
+    ideas,
     items,
     links,
     projects,
@@ -42,6 +43,7 @@ from luplo.core.models import (
     GlossaryRejection,
     GlossaryTerm,
     HistoryEntry,
+    Idea,
     Item,
     ItemCreate,
     ItemType,
@@ -1065,6 +1067,110 @@ class LocalBackend:
                 },
             )
             return new
+
+    # ── Ideas (append-only ideation notes) ───────────────────────
+
+    async def add_idea(
+        self,
+        *,
+        project_id: str,
+        work_unit_id: str,
+        text: str,
+        created_by: str | None = None,
+    ) -> Idea:
+        async with self.pool.connection() as conn:
+            idea = await ideas.add_idea(
+                conn,
+                project_id=project_id,
+                work_unit_id=work_unit_id,
+                text=text,
+                created_by=created_by,
+            )
+            if created_by:
+                await audit.record_audit(
+                    conn,
+                    actor_id=created_by,
+                    action="idea.create",
+                    target_type="idea",
+                    target_id=idea.id,
+                    metadata={"work_unit_id": idea.work_unit_id},
+                )
+            return idea
+
+    async def list_ideas(
+        self,
+        *,
+        work_unit_id: str,
+        project_id: str | None = None,
+        limit: int = 100,
+        include_redacted: bool = False,
+    ) -> list[Idea]:
+        async with self.pool.connection() as conn:
+            return await ideas.list_ideas(
+                conn,
+                work_unit_id=work_unit_id,
+                project_id=project_id,
+                limit=limit,
+                include_redacted=include_redacted,
+            )
+
+    async def search_ideas(
+        self,
+        *,
+        project_id: str,
+        query: str | None = None,
+        tsquery: str | None = None,
+        work_unit_id: str | None = None,
+        author: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        include_redacted: bool = False,
+        limit: int = 50,
+    ) -> list[Idea]:
+        async with self.pool.connection() as conn:
+            return await ideas.search_ideas(
+                conn,
+                project_id=project_id,
+                query=query,
+                tsquery=tsquery,
+                work_unit_id=work_unit_id,
+                author=author,
+                since=since,
+                until=until,
+                include_redacted=include_redacted,
+                limit=limit,
+            )
+
+    async def get_idea(self, idea_id: str, *, project_id: str | None = None) -> Idea | None:
+        async with self.pool.connection() as conn:
+            return await ideas.get_idea(conn, idea_id, project_id=project_id)
+
+    async def redact_idea(
+        self,
+        *,
+        idea_id: str,
+        redacted_by: str,
+        project_id: str | None = None,
+    ) -> tuple[Idea, bool]:
+        async with self.pool.connection() as conn:
+            idea, newly_redacted = await ideas.redact_idea(
+                conn,
+                idea_id=idea_id,
+                redacted_by=redacted_by,
+                project_id=project_id,
+            )
+            # Skip the audit row on an idempotent no-op — otherwise a
+            # caller looping on redact appends unbounded rows for a
+            # single state change.
+            if newly_redacted:
+                await audit.record_audit(
+                    conn,
+                    actor_id=redacted_by,
+                    action="idea.redact",
+                    target_type="idea",
+                    target_id=idea.id,
+                )
+            return idea, newly_redacted
 
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 

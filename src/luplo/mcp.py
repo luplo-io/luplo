@@ -33,6 +33,7 @@ from luplo.core.backend.remote import RemoteBackend
 from luplo.core.db import create_pool
 from luplo.core.import_pipeline.manifest import SourceFile
 from luplo.core.models import Item, ItemCreate
+from luplo.core.timeparse import parse_since
 
 mcp = FastMCP(
     "luplo",
@@ -858,6 +859,234 @@ async def luplo_task_block(
     return (
         f"Blocked task: {t.title} (new id: {t.id}). Auto-created a decision item with the reason."
     )
+
+
+# ── Ideas (append-only ideation notes) ──────────────────────────
+
+
+def _format_idea_line(idea: Any) -> str:
+    """One-line idea summary, masking redacted text on this public surface.
+
+    ``[REDACTED]`` rows surface their id + timestamp + the marker, but
+    the original ``text`` is replaced with ``[redacted]``. Without this,
+    ``include_redacted=True`` becomes a redaction-bypass channel: the
+    point of redact is to hide content from default flows, and the MCP
+    surface is a default flow.
+    """
+    if idea.redacted_at:
+        body = "[redacted]"
+        marker = " [REDACTED]"
+    else:
+        body = idea.text.replace("\n", " ")
+        if len(body) > 120:
+            body = body[:117] + "…"
+        marker = ""
+    return f"- [{idea.id[:8]}] {idea.created_at:%Y-%m-%d %H:%M}{marker} {body}"
+
+
+@mcp.tool()
+async def luplo_idea_add(
+    text: str,
+    project_id: str,
+    work_unit_id: str,
+    actor_id: str = "claude",
+) -> str:
+    """Append an ideation note to a work unit (append-only, redact-only).
+
+    Use for half-formed thoughts, exploration trails, "what if" notes —
+    anything you want to remember but is not yet a committed decision.
+    Mistakes are recovered via ``luplo_idea_redact``; ideas are never
+    deleted. Closed (done) work units accept ideas — useful for retro
+    notes. Archived / abandoned work units reject new ideas.
+    """
+    from luplo.core.errors import NotFoundError, ValidationError
+
+    b = await _get_backend()
+    try:
+        idea = await b.add_idea(
+            project_id=project_id,
+            work_unit_id=work_unit_id,
+            text=text,
+            created_by=_resolve_actor(actor_id),
+        )
+    except (NotFoundError, ValidationError) as exc:
+        return f"Error: {exc.message}"
+    return f"Added idea: {idea.id[:8]} (work_unit: {idea.work_unit_id[:8]})"
+
+
+@mcp.tool()
+async def luplo_idea_list(
+    work_unit_id: str,
+    project_id: str,
+    limit: int = 100,
+    include_redacted: bool = False,
+) -> str:
+    """List ideas for a work unit (newest first).
+
+    ``project_id`` is **required** to prevent an 8-char prefix collision
+    with another project's WU from matching, and to add a defence-in-depth
+    predicate at the SQL level. Without it, a full UUID from another
+    project would surface that project's ideas. Mutually consistent with
+    the other ``luplo_idea_*`` tools.
+
+    Redacted ideas are excluded by default. ``include_redacted=True``
+    surfaces their existence (id + timestamp + ``[REDACTED]`` marker)
+    for audit flows, but the original ``text`` is masked as
+    ``[redacted]``. Combining ``include_redacted=True`` with a text
+    query on ``luplo_idea_search`` is rejected — fetching raw redacted
+    content requires a SaaS-side admin path.
+    """
+    from luplo.core.errors import ValidationError
+
+    if not project_id:
+        return "Error: project_id is required."
+    b = await _get_backend()
+    try:
+        rows = await b.list_ideas(
+            work_unit_id=work_unit_id,
+            project_id=project_id,
+            limit=limit,
+            include_redacted=include_redacted,
+        )
+    except ValidationError as exc:
+        # list_ideas returns [] for not-found WU; only ValidationError
+        # (bad limit) escapes here.
+        return f"Error: {exc.message}"
+    if not rows:
+        return "No ideas."
+    lines = [f"Found {len(rows)} idea(s):"]
+    lines.extend(_format_idea_line(r) for r in rows)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def luplo_idea_search(
+    project_id: str,
+    query: str = "",
+    tsquery: str = "",
+    work_unit_id: str = "",
+    author: str = "",
+    since: str = "",
+    until: str = "",
+    include_redacted: bool = False,
+    limit: int = 50,
+) -> str:
+    """Full-text search over ideas in a project (optionally narrowed by WU).
+
+    *query* and *tsquery* are mutually exclusive — pass at most one.
+    Glossary expansion applies to *query*. Use *tsquery* for the raw
+    ``to_tsquery`` escape hatch (no glossary).
+
+    Time filters: *since* accepts ISO datetime, ``Nd`` / ``Nw`` (last N
+    days / weeks), or anchor (``this_week`` / ``this_month`` /
+    ``this_quarter``). *until* accepts ISO datetime or ``Nd`` / ``Nw``;
+    anchors are **since-only** (returning the start of the period as
+    *until* would filter out the entire current period).
+
+    *author* takes a full actor id. (Caller resolves "me" itself.)
+
+    Redacted ideas are excluded by default. ``include_redacted=True``
+    surfaces redacted rows for audit but **cannot be combined with a
+    text query** — match/no-match against redacted text would leak the
+    body via a keyword oracle. Use filter-only mode (author/since/wu)
+    for audit flows; raw redacted text requires a SaaS-side admin path.
+
+    Caller LLMs should decompose natural-language queries into the
+    appropriate ``query`` / ``since`` / ``author`` parameters on the
+    client side. This tool itself is deterministic.
+
+    Worked examples:
+
+    1. User says: "지난주 OAuth 리프레시 토큰 관련 아이디어" → call::
+
+           luplo_idea_search(
+               project_id=...,
+               query="OAuth refresh token 리프레시 토큰",
+               since="7d",
+           )
+
+    2. User says: "내가 이번 분기에 적은 검색 인프라 idea" → resolve "내가"
+       to the caller's actor_id, then call::
+
+           luplo_idea_search(
+               project_id=...,
+               query="검색 인프라",
+               author="<my-actor-id>",
+               since="this_quarter",
+           )
+    """
+    from luplo.core.errors import ValidationError
+
+    b = await _get_backend()
+    try:
+        since_dt = parse_since(since, mode="since")
+        until_dt = parse_since(until, mode="until")
+    except ValueError as exc:
+        return f"Error: {exc}"
+    try:
+        rows = await b.search_ideas(
+            project_id=project_id,
+            query=query or None,
+            tsquery=tsquery or None,
+            work_unit_id=work_unit_id or None,
+            author=author or None,
+            since=since_dt,
+            until=until_dt,
+            include_redacted=include_redacted,
+            limit=limit,
+        )
+    except ValidationError as exc:
+        # search_ideas returns [] for not-found WU; only ValidationError
+        # (bad limit, query+tsquery, oracle gate) escapes here.
+        return f"Error: {exc.message}"
+    if not rows:
+        return "No ideas matched."
+    lines = [f"Found {len(rows)} idea(s):"]
+    lines.extend(_format_idea_line(r) for r in rows)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def luplo_idea_redact(
+    idea_id: str,
+    project_id: str,
+    actor_id: str = "claude",
+) -> str:
+    """Mark an idea redacted (idempotent — no-op if already redacted).
+
+    Hides the idea from default list/search results. The row and ``text``
+    column are **preserved** (audit metadata, not deletion); redacted_at
+    and redacted_by are stamped. The default ``luplo_idea_list`` /
+    ``luplo_idea_search`` will not return this row. ``include_redacted=True``
+    on those tools surfaces the row's existence (id + timestamp +
+    ``[REDACTED]`` marker) but the original ``text`` is masked as
+    ``[redacted]``. Combining ``include_redacted=True`` with a text query
+    is rejected to close a keyword-oracle. Raw redacted content requires
+    a SaaS-side admin path.
+
+    Use this for mistakes or content that shouldn't surface in normal
+    flows; do **not** use this as a secret-scrubbing mechanism — the
+    text remains in the database.
+
+    ``project_id`` is **required** and is enforced both in prefix
+    resolution and at the SQL ``UPDATE`` predicate so a full UUID from
+    another project cannot mutate this row.
+    """
+    from luplo.core.errors import NotFoundError, ValidationError
+
+    if not project_id:
+        return "Error: project_id is required."
+    b = await _get_backend()
+    try:
+        idea, newly = await b.redact_idea(
+            idea_id=idea_id,
+            redacted_by=_resolve_actor(actor_id),
+            project_id=project_id,
+        )
+    except (NotFoundError, ValidationError) as exc:
+        return f"Error: {exc.message}"
+    verb = "Redacted" if newly else "Already redacted"
+    return f"{verb} idea: {idea.id[:8]} (at {idea.redacted_at:%Y-%m-%d %H:%M})"
 
 
 # ── QA Checks ────────────────────────────────────────────────────

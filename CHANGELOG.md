@@ -11,6 +11,14 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-05-06
+
+### Added
+- `ideas` table — append-only ideation notes attached to a work unit (separate from `items` because lifecycle and intent differ). Mistakes are recovered via redact (`redacted_at` / `redacted_by`); rows are never deleted. Migration `0008_ideas_table` creates the table plus a partial GIN index over non-redacted text for full-text search.
+- `Idea` dataclass and `core.ideas` module: `add_idea`, `list_ideas`, `search_ideas`, `redact_idea`, `get_idea`. `add_idea` rejects empty text, missing/cross-project work units, and `archived` / `abandoned` work units (`done` is allowed for retro notes). `search_ideas` accepts the same simple-dialect query as `core.search.pipeline.search`, with glossary expansion, plus optional `tsquery`, `work_unit_id`, `author`, `since`, `until`, and `include_redacted` filters.
+- MCP tools `luplo_idea_add`, `luplo_idea_list`, `luplo_idea_search`, `luplo_idea_redact`. `luplo_idea_search` accepts ISO datetime, `Nd` / `Nw`, or `this_week` / `this_month` / `this_quarter` for time filters; the docstring carries Korean and English worked examples for caller LLMs decomposing natural-language queries.
+- CLI `lp idea add` / `lp idea ls` / `lp idea find` / `lp idea redact`. When `--wu` is omitted on `add`, the active in-progress work unit is resolved automatically; the command exits with a friendly message when zero or multiple in-progress work units exist.
+
 ## [0.13.0] - 2026-04-30
 
 ### Added
@@ -481,7 +489,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/luplo-io/luplo/releases/tag/v0.14.0
 [0.13.0]: https://github.com/luplo-io/luplo/releases/tag/v0.13.0
 [0.12.0]: https://github.com/luplo-io/luplo/releases/tag/v0.12.0
 [0.11.1]: https://github.com/luplo-io/luplo/releases/tag/v0.11.1
