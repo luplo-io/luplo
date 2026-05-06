@@ -164,9 +164,7 @@ async def add_idea(
         wu_row = await cur.fetchone()
         if wu_row is None or wu_row["project_id"] != project_id:
             raise NotFoundError(f"work_unit not found: {work_unit_id}")
-        raise ValidationError(
-            f"work_unit {work_unit_id} is {wu_row['status']}; cannot add ideas"
-        )
+        raise ValidationError(f"work_unit {work_unit_id} is {wu_row['status']}; cannot add ideas")
 
 
 # ── Read ─────────────────────────────────────────────────────────
@@ -393,9 +391,9 @@ async def redact_idea(
             select_conditions.append(sql.SQL("project_id = %(pid)s"))
             select_params["pid"] = project_id
         select_where = sql.SQL(" AND ").join(select_conditions)
-        select_query = sql.SQL(
-            "SELECT {columns} FROM ideas WHERE {where}"
-        ).format(columns=_RETURNING, where=select_where)
+        select_query = sql.SQL("SELECT {columns} FROM ideas WHERE {where}").format(
+            columns=_RETURNING, where=select_where
+        )
         await cur.execute(select_query, select_params)
         existing = await cur.fetchone()
         if existing is None:

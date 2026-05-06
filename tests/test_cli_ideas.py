@@ -171,9 +171,7 @@ def test_idea_redact_hides_from_default_ls(env: dict[str, str], db_url: str) -> 
     assert "REDACTED" in ls_all.output  # status marker still present
 
 
-def test_idea_redact_idempotent_marks_already_redacted(
-    env: dict[str, str], db_url: str
-) -> None:
+def test_idea_redact_idempotent_marks_already_redacted(env: dict[str, str], db_url: str) -> None:
     """Round 2 S2: second redact reports 'Already redacted' instead of
     silently re-stamping (and the audit log only records one entry).
     """

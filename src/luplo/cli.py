@@ -1710,9 +1710,7 @@ def idea_redact(
 
     async def _do() -> None:
         async with _backend() as b:
-            idea, newly = await b.redact_idea(
-                idea_id=idea_id, redacted_by=aid, project_id=pid
-            )
+            idea, newly = await b.redact_idea(idea_id=idea_id, redacted_by=aid, project_id=pid)
             verb = "Redacted" if newly else "Already redacted"
             typer.echo(f"{verb} idea: {idea.id[:8]} (at {idea.redacted_at:%Y-%m-%d %H:%M})")
 
