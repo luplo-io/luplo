@@ -11,13 +11,34 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
-## [0.14.0] - 2026-05-06
+## [0.14.1] - 2026-05-06
+
+0.14.0 was never published; the initial `ideas` feature ships as 0.14.1
+with the security and correctness fixes from a multi-reviewer code
+review folded in.
 
 ### Added
 - `ideas` table — append-only ideation notes attached to a work unit (separate from `items` because lifecycle and intent differ). Mistakes are recovered via redact (`redacted_at` / `redacted_by`); rows are never deleted. Migration `0008_ideas_table` creates the table plus a partial GIN index over non-redacted text for full-text search.
 - `Idea` dataclass and `core.ideas` module: `add_idea`, `list_ideas`, `search_ideas`, `redact_idea`, `get_idea`. `add_idea` rejects empty text, missing/cross-project work units, and `archived` / `abandoned` work units (`done` is allowed for retro notes). `search_ideas` accepts the same simple-dialect query as `core.search.pipeline.search`, with glossary expansion, plus optional `tsquery`, `work_unit_id`, `author`, `since`, `until`, and `include_redacted` filters.
-- MCP tools `luplo_idea_add`, `luplo_idea_list`, `luplo_idea_search`, `luplo_idea_redact`. `luplo_idea_search` accepts ISO datetime, `Nd` / `Nw`, or `this_week` / `this_month` / `this_quarter` for time filters; the docstring carries Korean and English worked examples for caller LLMs decomposing natural-language queries.
+- MCP tools `luplo_idea_add`, `luplo_idea_list`, `luplo_idea_search`, `luplo_idea_redact`. `luplo_idea_search` accepts ISO datetime, `Nd` / `Nw`, or `this_week` / `this_month` / `this_quarter` (since-only) for time filters; the docstring carries Korean and English worked examples for caller LLMs decomposing natural-language queries.
 - CLI `lp idea add` / `lp idea ls` / `lp idea find` / `lp idea redact`. When `--wu` is omitted on `add`, the active in-progress work unit is resolved automatically; the command exits with a friendly message when zero or multiple in-progress work units exist.
+
+### Security
+- `redact_idea` / `get_idea` / `list_ideas` now enforce `project_id` in the SQL `UPDATE` / `SELECT` predicate, not just in prefix resolution. A full UUID from another project can no longer mutate or read this row when `project_id` is supplied. Cross-project diagnostics on `add_idea` collapse to a plain "not found" so error messages can no longer be used to probe other-project membership.
+- `luplo_idea_list` and `luplo_idea_redact` MCP tools require `project_id` (previously optional with empty-string default) so the predicate above cannot be skipped from the public MCP surface.
+- `luplo_idea_search` rejects `include_redacted=True` combined with a text query — `to_tsvector` match/no-match against redacted rows would otherwise leak the body via a keyword oracle, even with the response-layer mask. Use filter-only mode (author / since / wu) for audit flows.
+- The CLI / MCP response layer masks the redacted body as `[redacted]` while keeping the `[REDACTED]` status marker; raw text remains in the database for SaaS-side admin paths.
+
+### Changed
+- `redact_idea` returns `tuple[Idea, bool]` — `(idea, newly_redacted)`. Idempotent retries return `False` and skip the audit row, fixing an unbounded-audit growth path. CLI / MCP surface this as "Already redacted" on retry.
+- Idea-domain errors raise `ValidationError` / `NotFoundError` instead of plain `ValueError`. The CLI `_run` translator now catches `ValidationError` (exit 2) alongside the existing `NotFoundError` (exit 1). MCP idea tools wrap the same domain errors so an LLM caller gets a clean `Error: …` string instead of a raw traceback.
+- `parse_since` accepts a keyword-only `mode={"since","until"}`. Anchors (`this_week` / `this_month` / `this_quarter`) are rejected for `mode="until"` because returning the start of the period silently filters out the entire current period. Huge `Nd` / `Nw` values that would overflow `timedelta` raise a friendly `ValueError` instead.
+- `lp idea redact` aligns with peers and uses `_cfg_project` (project required); it now also reports "Already redacted" on idempotent retries.
+
+### Fixed
+- `_FORBIDDEN_WU_STATUSES` is now the single source of truth: the INSERT predicate composes the `archived` / `abandoned` literals from the constant rather than duplicating them inline.
+- `search_ideas` computes its `_rank` alias inside a subquery so the outer projection no longer relies on a per-row dict-comprehension to strip the alias before constructing `Idea`.
+- `_row_to_idea` builds `Idea` via explicit kwargs instead of mutating the input dict in place — search callers that slice the row are now safe.
 
 ## [0.13.0] - 2026-04-30
 
@@ -489,8 +510,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.14.0...HEAD
-[0.14.0]: https://github.com/luplo-io/luplo/releases/tag/v0.14.0
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/luplo-io/luplo/releases/tag/v0.14.1
 [0.13.0]: https://github.com/luplo-io/luplo/releases/tag/v0.13.0
 [0.12.0]: https://github.com/luplo-io/luplo/releases/tag/v0.12.0
 [0.11.1]: https://github.com/luplo-io/luplo/releases/tag/v0.11.1
