@@ -230,3 +230,175 @@ async def test_local_backend_annotate_capture(db_url: str) -> None:
     assert updated.sensitivity_hint == "possible"
     assert updated.signals == {"source": "test"}
     assert [row.id for row in found] == [capture.id]
+
+
+async def test_promote_capture_to_item_creates_item_and_bridge(
+    conn: object,
+    seed_project: str,
+    seed_actor: str,
+) -> None:
+    from luplo.core.captures import add_capture, promote_capture_to_item
+    from luplo.core.items import get_item
+    from luplo.core.models import ItemCreate
+
+    capture = await add_capture(
+        conn,  # type: ignore[arg-type]
+        text="This should become knowledge.",
+        created_by=seed_actor,
+    )
+    promoted_capture, item = await promote_capture_to_item(
+        conn,  # type: ignore[arg-type]
+        capture.id,
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="knowledge",
+            title="Captured knowledge",
+            body="This should become knowledge.",
+        ),
+    )
+
+    assert promoted_capture.review_state == "promoted"
+    assert promoted_capture.id == capture.id
+    assert item.item_type == "knowledge"
+    assert item.title == "Captured knowledge"
+
+    fetched = await get_item(conn, item.id, project_id=seed_project)  # type: ignore[arg-type]
+    assert fetched is not None
+
+    async with conn.cursor() as cur:  # type: ignore[attr-defined]
+        await cur.execute(
+            "SELECT promoted_as FROM capture_promotions"
+            " WHERE capture_id = %s AND target_item_id = %s",
+            (capture.id, item.id),
+        )
+        row = await cur.fetchone()
+    assert row == ("knowledge",)
+
+
+async def test_promote_capture_to_item_rejects_redacted_capture(
+    conn: object,
+    seed_project: str,
+    seed_actor: str,
+) -> None:
+    import pytest
+
+    from luplo.core.captures import add_capture, promote_capture_to_item, redact_capture
+    from luplo.core.errors import ValidationError
+    from luplo.core.models import ItemCreate
+
+    capture = await add_capture(conn, text="secret promotion target")  # type: ignore[arg-type]
+    await redact_capture(conn, capture.id, redacted_by=seed_actor)  # type: ignore[arg-type]
+
+    with pytest.raises(ValidationError, match="redacted captures cannot be promoted"):
+        await promote_capture_to_item(
+            conn,  # type: ignore[arg-type]
+            capture.id,
+            ItemCreate(
+                project_id=seed_project,
+                actor_id=seed_actor,
+                item_type="knowledge",
+                title="Should not promote",
+                body="secret promotion target",
+            ),
+        )
+
+
+async def test_promote_capture_to_item_uses_item_creation_validation(
+    conn: object,
+    seed_project: str,
+    seed_actor: str,
+) -> None:
+    import pytest
+
+    from luplo.core.captures import add_capture, get_capture, promote_capture_to_item
+    from luplo.core.errors import ValidationError
+    from luplo.core.models import ItemCreate
+
+    capture = await add_capture(conn, text="research candidate")  # type: ignore[arg-type]
+
+    with pytest.raises(ValidationError, match="requires source_url"):
+        await promote_capture_to_item(
+            conn,  # type: ignore[arg-type]
+            capture.id,
+            ItemCreate(
+                project_id=seed_project,
+                actor_id=seed_actor,
+                item_type="research",
+                title="Missing source URL",
+                body="research candidate",
+            ),
+        )
+
+    unchanged = await get_capture(conn, capture.id)  # type: ignore[arg-type]
+    assert unchanged is not None
+    assert unchanged.review_state == "captured"
+    async with conn.cursor() as cur:  # type: ignore[attr-defined]
+        await cur.execute(
+            "SELECT count(*) FROM capture_promotions WHERE capture_id = %s",
+            (capture.id,),
+        )
+        row = await cur.fetchone()
+    assert row == (0,)
+
+
+async def test_local_backend_promote_capture_to_item_creates_bridge_and_audit(
+    db_url: str,
+) -> None:
+    import uuid
+
+    from luplo.core.backend.local import LocalBackend
+    from luplo.core.db import close_pool, create_pool
+    from luplo.core.models import ItemCreate
+
+    suffix = uuid.uuid4().hex[:8]
+    project_id = f"capture-promotion-{suffix}"
+    actor_id = str(uuid.uuid4())
+    pool = await create_pool(db_url)
+    try:
+        backend = LocalBackend(pool)
+        await backend.create_project(
+            id=project_id,
+            name=f"Capture Promotion Project {suffix}",
+        )
+        await backend.create_actor(
+            id=actor_id,
+            name="Capture Promotion Actor",
+            email=f"capture-promotion-{suffix}@test.com",
+        )
+        capture = await backend.add_capture(
+            text="backend promotion target",
+            created_by=actor_id,
+        )
+        promoted, item = await backend.promote_capture_to_item(
+            capture.id[:8],
+            ItemCreate(
+                project_id=project_id,
+                actor_id=actor_id,
+                item_type="knowledge",
+                title="Backend promoted knowledge",
+                body="backend promotion target",
+            ),
+        )
+        async with pool.connection() as conn:
+            bridge = await conn.execute(
+                "SELECT promoted_as FROM capture_promotions"
+                " WHERE capture_id = %s AND target_item_id = %s",
+                (capture.id, item.id),
+            )
+            bridge_row = await bridge.fetchone()
+            audit_rows = await conn.execute(
+                "SELECT action, metadata FROM audit_log"
+                " WHERE action = 'capture.promote' AND target_id = %s",
+                (capture.id,),
+            )
+            audit_row = await audit_rows.fetchone()
+    finally:
+        await close_pool(pool)
+
+    assert promoted.review_state == "promoted"
+    assert item.item_type == "knowledge"
+    assert bridge_row == ("knowledge",)
+    assert audit_row is not None
+    assert audit_row[0] == "capture.promote"
+    assert audit_row[1] == {"target_item_id": item.id, "item_type": "knowledge"}

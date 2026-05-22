@@ -237,6 +237,12 @@ class Backend(Protocol):
         signals: dict[str, Any] | None = None,
     ) -> Capture: ...
 
+    async def promote_capture_to_item(
+        self,
+        capture_id: str,
+        data: ItemCreate,
+    ) -> tuple[Capture, Item]: ...
+
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 
     async def create_qa(

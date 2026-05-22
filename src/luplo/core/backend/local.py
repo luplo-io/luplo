@@ -701,6 +701,23 @@ class LocalBackend:
                 signals=signals,
             )
 
+    async def promote_capture_to_item(
+        self,
+        capture_id: str,
+        data: ItemCreate,
+    ) -> tuple[Capture, Item]:
+        async with self.pool.connection() as conn:
+            capture, item = await captures.promote_capture_to_item(conn, capture_id, data)
+            await audit.record_audit(
+                conn,
+                actor_id=data.actor_id,
+                action="capture.promote",
+                target_type="capture",
+                target_id=capture.id,
+                metadata={"target_item_id": item.id, "item_type": item.item_type},
+            )
+            return capture, item
+
     # ── Glossary ─────────────────────────────────────────────────
 
     async def create_glossary_group(

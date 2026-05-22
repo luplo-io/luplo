@@ -265,6 +265,15 @@ class RemoteBackend:
             "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
         )
 
+    async def promote_capture_to_item(
+        self,
+        capture_id: str,
+        data: ItemCreate,
+    ) -> tuple[Capture, Item]:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
     # ── Work Units ───────────────────────────────────────────────
 
     async def open_work_unit(

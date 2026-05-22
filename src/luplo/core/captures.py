@@ -14,9 +14,10 @@ from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from luplo.core import items
 from luplo.core.errors import NotFoundError, ValidationError
 from luplo.core.id_resolve import resolve_uuid_prefix
-from luplo.core.models import Capture
+from luplo.core.models import Capture, Item, ItemCreate
 
 CAPTURE_STATES = ("captured", "backlog", "review", "promoted", "discarded", "redacted")
 SENSITIVITY_HINTS = ("none", "possible", "sensitive")
@@ -342,3 +343,36 @@ async def annotate_capture(
         row = await cur.fetchone()
         assert row is not None
         return _row_to_capture(row)
+
+
+async def promote_capture_to_item(
+    conn: AsyncConnection[Any],
+    capture_id: str,
+    data: ItemCreate,
+) -> tuple[Capture, Item]:
+    capture = await get_capture(conn, capture_id)
+    if capture is None:
+        raise NotFoundError(f"capture not found: {capture_id}")
+    if capture.review_state == "redacted":
+        raise ValidationError("redacted captures cannot be promoted")
+
+    item = await items.create_item(conn, data)
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            """
+            INSERT INTO capture_promotions
+                (capture_id, target_item_id, promoted_as, created_by)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (capture.id, item.id, item.item_type, data.actor_id),
+        )
+        await cur.execute(
+            sql.SQL(
+                "UPDATE captures SET review_state = 'promoted', updated_at = now()"
+                " WHERE id = %(id)s RETURNING {columns}"
+            ).format(columns=_RETURNING),
+            {"id": capture.id},
+        )
+        row = await cur.fetchone()
+    assert row is not None
+    return _row_to_capture(row), item
