@@ -202,6 +202,57 @@ class RemoteBackend:
             "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
         )
 
+    async def get_capture(self, capture_id: str) -> Capture | None:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def search_captures(
+        self,
+        *,
+        query: str | None = None,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+    ) -> list[Capture]:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def set_capture_state(
+        self,
+        capture_id: str,
+        *,
+        review_state: str,
+        actor_id: str | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def discard_capture(
+        self,
+        capture_id: str,
+        *,
+        actor_id: str | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def redact_capture(
+        self,
+        capture_id: str,
+        *,
+        redacted_by: str | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
     # ── Work Units ───────────────────────────────────────────────
 
     async def open_work_unit(

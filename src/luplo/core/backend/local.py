@@ -595,6 +595,95 @@ class LocalBackend:
                 limit=limit,
             )
 
+    async def get_capture(self, capture_id: str) -> Capture | None:
+        async with self.pool.connection() as conn:
+            return await captures.get_capture(conn, capture_id)
+
+    async def search_captures(
+        self,
+        *,
+        query: str | None = None,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+    ) -> list[Capture]:
+        async with self.pool.connection() as conn:
+            return await captures.search_captures(
+                conn,
+                query=query,
+                review_state=review_state,
+                include_discarded=include_discarded,
+                include_redacted=include_redacted,
+                since=since,
+                until=until,
+                limit=limit,
+            )
+
+    async def set_capture_state(
+        self,
+        capture_id: str,
+        *,
+        review_state: str,
+        actor_id: str | None = None,
+    ) -> Capture:
+        async with self.pool.connection() as conn:
+            capture = await captures.set_capture_state(
+                conn,
+                capture_id,
+                review_state=review_state,
+                actor_id=actor_id,
+            )
+            if actor_id:
+                await audit.record_audit(
+                    conn,
+                    actor_id=actor_id,
+                    action="capture.state",
+                    target_type="capture",
+                    target_id=capture.id,
+                    metadata={"review_state": capture.review_state},
+                )
+            return capture
+
+    async def discard_capture(
+        self,
+        capture_id: str,
+        *,
+        actor_id: str | None = None,
+    ) -> Capture:
+        async with self.pool.connection() as conn:
+            capture = await captures.discard_capture(conn, capture_id, actor_id=actor_id)
+            if actor_id:
+                await audit.record_audit(
+                    conn,
+                    actor_id=actor_id,
+                    action="capture.discard",
+                    target_type="capture",
+                    target_id=capture.id,
+                    metadata={"review_state": capture.review_state},
+                )
+            return capture
+
+    async def redact_capture(
+        self,
+        capture_id: str,
+        *,
+        redacted_by: str | None = None,
+    ) -> Capture:
+        async with self.pool.connection() as conn:
+            capture = await captures.redact_capture(conn, capture_id, redacted_by=redacted_by)
+            if redacted_by:
+                await audit.record_audit(
+                    conn,
+                    actor_id=redacted_by,
+                    action="capture.redact",
+                    target_type="capture",
+                    target_id=capture.id,
+                )
+            return capture
+
     # ── Glossary ─────────────────────────────────────────────────
 
     async def create_glossary_group(

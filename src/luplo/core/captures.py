@@ -14,7 +14,8 @@ from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from luplo.core.errors import ValidationError
+from luplo.core.errors import NotFoundError, ValidationError
+from luplo.core.id_resolve import resolve_uuid_prefix
 from luplo.core.models import Capture
 
 CAPTURE_STATES = ("captured", "backlog", "review", "promoted", "discarded", "redacted")
@@ -160,3 +161,140 @@ async def list_captures(
         await cur.execute(query, params)
         rows = await cur.fetchall()
         return [_row_to_capture(r) for r in rows]
+
+
+async def get_capture(
+    conn: AsyncConnection[Any],
+    capture_id: str,
+) -> Capture | None:
+    resolved = await resolve_uuid_prefix(conn, "captures", capture_id, label_column="id")
+    if resolved is None:
+        return None
+    query = sql.SQL("SELECT {columns} FROM captures WHERE id = %(id)s").format(
+        columns=_RETURNING
+    )
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query, {"id": resolved})
+        row = await cur.fetchone()
+        return _row_to_capture(row) if row else None
+
+
+async def search_captures(
+    conn: AsyncConnection[Any],
+    *,
+    query: str | None = None,
+    review_state: str | None = None,
+    include_discarded: bool = False,
+    include_redacted: bool = False,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 50,
+) -> list[Capture]:
+    _validate_limit(limit)
+    conditions: list[sql.Composable] = []
+    params: dict[str, Any] = {"limit": limit}
+    rank_expr: sql.Composable = sql.SQL("0::float4")
+
+    if query is not None and query.strip():
+        params["q"] = query.strip()
+        conditions.append(sql.SQL("search_tsv @@ plainto_tsquery('simple', %(q)s)"))
+        rank_expr = sql.SQL("ts_rank(search_tsv, plainto_tsquery('simple', %(q)s))")
+
+    if review_state is not None:
+        _validate_state(review_state)
+        conditions.append(sql.SQL("review_state = %(state)s"))
+        params["state"] = review_state
+    else:
+        if not include_discarded:
+            conditions.append(sql.SQL("review_state <> 'discarded'"))
+        if not include_redacted:
+            conditions.append(sql.SQL("review_state <> 'redacted'"))
+
+    if since is not None:
+        conditions.append(sql.SQL("created_at >= %(since)s"))
+        params["since"] = since
+    if until is not None:
+        conditions.append(sql.SQL("created_at < %(until)s"))
+        params["until"] = until
+
+    where = sql.SQL("TRUE") if not conditions else sql.SQL(" AND ").join(conditions)
+    full = sql.SQL(
+        "SELECT {columns} FROM ("
+        " SELECT {columns}, {rank} AS _rank FROM captures WHERE {where}"
+        ") ranked ORDER BY _rank DESC, created_at DESC, id DESC LIMIT %(limit)s"
+    ).format(columns=_RETURNING, rank=rank_expr, where=where)
+
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(full, params)
+        rows = await cur.fetchall()
+        return [_row_to_capture(r) for r in rows]
+
+
+async def set_capture_state(
+    conn: AsyncConnection[Any],
+    capture_id: str,
+    *,
+    review_state: str,
+    actor_id: str | None = None,
+) -> Capture:
+    _validate_state(review_state)
+    if review_state == "redacted":
+        raise ValidationError("use redact_capture for redacted state")
+    resolved = await resolve_uuid_prefix(conn, "captures", capture_id, label_column="id")
+    if resolved is None:
+        raise NotFoundError(f"capture not found: {capture_id}")
+    query = sql.SQL(
+        "UPDATE captures SET review_state = %(state)s, updated_at = now()"
+        " WHERE id = %(id)s AND review_state <> 'redacted'"
+        " RETURNING {columns}"
+    ).format(columns=_RETURNING)
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query, {"id": resolved, "state": review_state})
+        row = await cur.fetchone()
+        if row is None:
+            raise NotFoundError(f"capture not found: {capture_id}")
+        return _row_to_capture(row)
+
+
+async def discard_capture(
+    conn: AsyncConnection[Any],
+    capture_id: str,
+    *,
+    actor_id: str | None = None,
+) -> Capture:
+    return await set_capture_state(
+        conn, capture_id, review_state="discarded", actor_id=actor_id
+    )
+
+
+async def redact_capture(
+    conn: AsyncConnection[Any],
+    capture_id: str,
+    *,
+    redacted_by: str | None = None,
+) -> Capture:
+    resolved = await resolve_uuid_prefix(conn, "captures", capture_id, label_column="id")
+    if resolved is None:
+        raise NotFoundError(f"capture not found: {capture_id}")
+    query = sql.SQL(
+        "UPDATE captures"
+        " SET text = %(redacted)s,"
+        "     summary = %(redacted)s,"
+        "     review_state = 'redacted',"
+        "     sensitivity_hint = 'sensitive',"
+        "     signals = '{{}}'::jsonb,"
+        "     redacted_at = coalesce(redacted_at, now()),"
+        "     redacted_by = coalesce(redacted_by, %(redacted_by)s),"
+        "     updated_at = now(),"
+        "     search_tsv = to_tsvector('simple', %(redacted)s)"
+        " WHERE id = %(id)s"
+        " RETURNING {columns}"
+    ).format(columns=_RETURNING)
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            query,
+            {"id": resolved, "redacted": REDACTED_TEXT, "redacted_by": redacted_by},
+        )
+        row = await cur.fetchone()
+        assert row is not None
+        return _row_to_capture(row)
