@@ -684,6 +684,23 @@ class LocalBackend:
                 )
             return capture
 
+    async def annotate_capture(
+        self,
+        capture_id: str,
+        *,
+        summary: str | None = None,
+        sensitivity_hint: str | None = None,
+        signals: dict[str, Any] | None = None,
+    ) -> Capture:
+        async with self.pool.connection() as conn:
+            return await captures.annotate_capture(
+                conn,
+                capture_id,
+                summary=summary,
+                sensitivity_hint=sensitivity_hint,
+                signals=signals,
+            )
+
     # ── Glossary ─────────────────────────────────────────────────
 
     async def create_glossary_group(

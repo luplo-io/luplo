@@ -298,3 +298,47 @@ async def redact_capture(
         row = await cur.fetchone()
         assert row is not None
         return _row_to_capture(row)
+
+
+async def annotate_capture(
+    conn: AsyncConnection[Any],
+    capture_id: str,
+    *,
+    summary: str | None = None,
+    sensitivity_hint: str | None = None,
+    signals: dict[str, Any] | None = None,
+) -> Capture:
+    if sensitivity_hint is not None:
+        _validate_sensitivity_hint(sensitivity_hint)
+    safe_signals = _validate_signals(signals) if signals is not None else None
+    resolved = await resolve_uuid_prefix(conn, "captures", capture_id, label_column="id")
+    if resolved is None:
+        raise NotFoundError(f"capture not found: {capture_id}")
+
+    assignments: list[sql.Composable] = [sql.SQL("updated_at = now()")]
+    params: dict[str, Any] = {"id": resolved, "summary_for_tsv": summary}
+    if summary is not None:
+        assignments.append(sql.SQL("summary = %(summary)s"))
+        params["summary"] = summary
+    if sensitivity_hint is not None:
+        assignments.append(sql.SQL("sensitivity_hint = %(sensitivity_hint)s"))
+        params["sensitivity_hint"] = sensitivity_hint
+    if safe_signals is not None:
+        assignments.append(sql.SQL("signals = %(signals)s"))
+        params["signals"] = Jsonb(safe_signals)
+    assignments.append(
+        sql.SQL(
+            "search_tsv = to_tsvector("
+            "'simple', text || ' ' || coalesce(%(summary_for_tsv)s, summary, '')"
+            ")"
+        )
+    )
+
+    query = sql.SQL(
+        "UPDATE captures SET {assignments} WHERE id = %(id)s RETURNING {columns}"
+    ).format(assignments=sql.SQL(", ").join(assignments), columns=_RETURNING)
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(query, params)
+        row = await cur.fetchone()
+        assert row is not None
+        return _row_to_capture(row)

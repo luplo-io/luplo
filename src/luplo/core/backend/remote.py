@@ -253,6 +253,18 @@ class RemoteBackend:
             "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
         )
 
+    async def annotate_capture(
+        self,
+        capture_id: str,
+        *,
+        summary: str | None = None,
+        sensitivity_hint: str | None = None,
+        signals: dict[str, Any] | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
     # ── Work Units ───────────────────────────────────────────────
 
     async def open_work_unit(

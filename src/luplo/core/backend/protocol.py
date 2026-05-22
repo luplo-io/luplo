@@ -228,6 +228,15 @@ class Backend(Protocol):
         redacted_by: str | None = None,
     ) -> Capture: ...
 
+    async def annotate_capture(
+        self,
+        capture_id: str,
+        *,
+        summary: str | None = None,
+        sensitivity_hint: str | None = None,
+        signals: dict[str, Any] | None = None,
+    ) -> Capture: ...
+
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 
     async def create_qa(

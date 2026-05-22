@@ -174,3 +174,59 @@ async def test_local_backend_search_state_discard_and_redact_captures(db_url: st
     assert capture.id not in {row.id for row in listed}
     assert redacted.text == "[redacted]"
     assert after_redact == []
+
+
+async def test_annotate_capture_updates_summary_and_signals(conn: object) -> None:
+    from luplo.core.captures import add_capture, annotate_capture, search_captures
+
+    capture = await add_capture(conn, text="raw meeting story")  # type: ignore[arg-type]
+    updated = await annotate_capture(
+        conn,  # type: ignore[arg-type]
+        capture.id,
+        summary="people issue summary",
+        sensitivity_hint="possible",
+        signals={"tags": ["people_issue"], "confidence": 0.7},
+    )
+
+    assert updated.summary == "people issue summary"
+    assert updated.sensitivity_hint == "possible"
+    assert updated.signals == {"tags": ["people_issue"], "confidence": 0.7}
+
+    rows = await search_captures(conn, query="people issue summary")  # type: ignore[arg-type]
+    assert rows[0].id == capture.id
+
+
+async def test_annotate_capture_rejects_non_object_signals(conn: object) -> None:
+    import pytest
+
+    from luplo.core.captures import add_capture, annotate_capture
+    from luplo.core.errors import ValidationError
+
+    capture = await add_capture(conn, text="raw")  # type: ignore[arg-type]
+    with pytest.raises(ValidationError, match="signals must be a JSON object"):
+        await annotate_capture(conn, capture.id, signals=["bad"])  # type: ignore[arg-type]
+
+
+async def test_local_backend_annotate_capture(db_url: str) -> None:
+    from luplo.core.backend.local import LocalBackend
+    from luplo.core.db import close_pool, create_pool
+
+    pool = await create_pool(db_url)
+    try:
+        backend = LocalBackend(pool)
+        capture = await backend.add_capture(text="backend annotation target")
+        updated = await backend.annotate_capture(
+            capture.id[:8],
+            summary="backend supplied summary",
+            sensitivity_hint="possible",
+            signals={"source": "test"},
+        )
+        found = await backend.search_captures(query="backend supplied summary")
+    finally:
+        await close_pool(pool)
+
+    assert updated.id == capture.id
+    assert updated.summary == "backend supplied summary"
+    assert updated.sensitivity_hint == "possible"
+    assert updated.signals == {"source": "test"}
+    assert [row.id for row in found] == [capture.id]
