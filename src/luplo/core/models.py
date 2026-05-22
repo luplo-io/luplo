@@ -149,6 +149,34 @@ class Idea:
     redacted_by: str | None = None
 
 
+@dataclass(slots=True)
+class Capture:
+    """Raw text intake outside the curated items graph."""
+
+    id: str
+    text: str
+    summary: str | None
+    review_state: str
+    sensitivity_hint: str
+    signals: dict[str, Any]
+    created_by: str | None
+    created_at: datetime
+    updated_at: datetime
+    redacted_at: datetime | None = None
+    redacted_by: str | None = None
+
+
+@dataclass(slots=True)
+class CapturePromotion:
+    """Bridge from a raw capture to a curated item."""
+
+    capture_id: str
+    target_item_id: str
+    promoted_as: str
+    created_by: str | None
+    created_at: datetime
+
+
 # ── Glossary 3 ───────────────────────────────────────────────────
 
 
