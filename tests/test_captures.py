@@ -86,14 +86,18 @@ async def test_local_backend_add_and_list_captures(db_url: str) -> None:
 
 
 async def test_search_captures_matches_text(conn: object) -> None:
+    import uuid
+
     from luplo.core.captures import add_capture, search_captures
 
-    await add_capture(conn, text="family dinner reaction")  # type: ignore[arg-type]
+    token = f"family{uuid.uuid4().hex}"
+    expected = f"family dinner reaction {token}"
+    await add_capture(conn, text=expected)  # type: ignore[arg-type]
     await add_capture(conn, text="game combat idea")  # type: ignore[arg-type]
 
-    rows = await search_captures(conn, query="family dinner", limit=10)  # type: ignore[arg-type]
+    rows = await search_captures(conn, query=token, limit=10)  # type: ignore[arg-type]
 
-    assert [row.text for row in rows] == ["family dinner reaction"]
+    assert [row.text for row in rows] == [expected]
 
 
 async def test_set_capture_state_updates_state(conn: object, seed_actor: str) -> None:

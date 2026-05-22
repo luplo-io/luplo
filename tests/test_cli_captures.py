@@ -60,10 +60,13 @@ def test_capture_add_rejects_empty(env: dict[str, str]) -> None:
 
 
 def test_capture_find(env: dict[str, str]) -> None:
-    runner.invoke(app, ["capture", "add", "family dinner reaction"], env=env)
+    import uuid
+
+    token = f"family{uuid.uuid4().hex}"
+    runner.invoke(app, ["capture", "add", "family dinner reaction", token], env=env)
     runner.invoke(app, ["capture", "add", "game combat idea"], env=env)
 
-    result = runner.invoke(app, ["capture", "find", "family", "dinner"], env=env)
+    result = runner.invoke(app, ["capture", "find", token], env=env)
 
     assert result.exit_code == 0, result.output
     assert "family dinner reaction" in result.output
