@@ -15,6 +15,7 @@ from luplo.core.checks import Finding
 from luplo.core.impact import ImpactResult
 from luplo.core.models import (
     Actor,
+    Capture,
     GlossaryGroup,
     GlossaryRejection,
     GlossaryTerm,
@@ -167,6 +168,80 @@ class Backend(Protocol):
         Returns ``None`` when the task lacks body/summary content.
         """
         ...
+
+    # ── Captures (raw text intake) ───────────────────────────────
+
+    async def add_capture(
+        self,
+        *,
+        text: str,
+        created_by: str | None = None,
+        summary: str | None = None,
+        sensitivity_hint: str = "none",
+        signals: dict[str, Any] | None = None,
+    ) -> Capture: ...
+
+    async def list_captures(
+        self,
+        *,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[Capture]: ...
+
+    async def get_capture(self, capture_id: str) -> Capture | None: ...
+
+    async def search_captures(
+        self,
+        *,
+        query: str | None = None,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+    ) -> list[Capture]: ...
+
+    async def set_capture_state(
+        self,
+        capture_id: str,
+        *,
+        review_state: str,
+        actor_id: str | None = None,
+    ) -> Capture: ...
+
+    async def discard_capture(
+        self,
+        capture_id: str,
+        *,
+        actor_id: str | None = None,
+    ) -> Capture: ...
+
+    async def redact_capture(
+        self,
+        capture_id: str,
+        *,
+        redacted_by: str | None = None,
+    ) -> Capture: ...
+
+    async def annotate_capture(
+        self,
+        capture_id: str,
+        *,
+        summary: str | None = None,
+        sensitivity_hint: str | None = None,
+        signals: dict[str, Any] | None = None,
+    ) -> Capture: ...
+
+    async def promote_capture_to_item(
+        self,
+        capture_id: str,
+        data: ItemCreate,
+    ) -> tuple[Capture, Item]: ...
 
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 

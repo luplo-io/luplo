@@ -66,7 +66,12 @@ glossary_group_app = typer.Typer(name="group", help="Manage glossary groups.")
 glossary_term_app = typer.Typer(name="term", help="Manage glossary terms.")
 task_app = typer.Typer(name="task", help="Manage tasks (item_type='task').")
 qa_app = typer.Typer(name="qa", help="Manage QA checks (item_type='qa_check').")
-idea_app = typer.Typer(name="idea", help="Append-only ideation notes on a work unit.")
+_IDEA_LEGACY_NOTE = (
+    "Deprecated for raw intake. Use capture for unstructured backlog entries. "
+    "Ideas remain for compatibility with work-unit-scoped ideation notes."
+)
+idea_app = typer.Typer(name="idea", help=_IDEA_LEGACY_NOTE)
+capture_app = typer.Typer(name="capture", help="Raw text capture backlog.")
 import_app = typer.Typer(name="import", help="Import spec/plan markdown into a luplo work_unit.")
 
 app.add_typer(items_app)
@@ -78,6 +83,7 @@ glossary_app.add_typer(glossary_term_app)
 app.add_typer(task_app)
 app.add_typer(qa_app)
 app.add_typer(idea_app)
+app.add_typer(capture_app)
 app.add_typer(import_app)
 
 
@@ -1535,6 +1541,216 @@ def qa_assign(
     _run(_do())
 
 
+# ── Captures ─────────────────────────────────────────────────────
+
+
+def _print_capture(capture: Any) -> None:
+    body = capture.text.replace("\n", " ")
+    if len(body) > 120:
+        body = body[:117] + "..."
+    typer.echo(
+        f"  {capture.id[:8]}  {capture.created_at:%Y-%m-%d %H:%M}"
+        f"  [{capture.review_state}]  {body}"
+    )
+
+
+@capture_app.command("add")
+def capture_add(
+    text: list[str] = typer.Argument(..., help="Raw capture text (joined with spaces)."),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Save raw text into the capture backlog."""
+    body = " ".join(text)
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            capture = await b.add_capture(text=body, created_by=aid)
+            typer.echo(f"Saved capture: {capture.id[:8]} ({capture.review_state})")
+
+    _run(_do())
+
+
+@capture_app.command("ls")
+def capture_ls(
+    state: str | None = typer.Option(None, "--state", help="Filter by capture state."),
+    limit: int = typer.Option(100, "--limit"),
+    include_discarded: bool = typer.Option(False, "--include-discarded"),
+    include_redacted: bool = typer.Option(False, "--include-redacted"),
+) -> None:
+    """List recent captures, newest first."""
+
+    async def _do() -> None:
+        async with _backend() as b:
+            rows = await b.list_captures(
+                review_state=state,
+                limit=limit,
+                include_discarded=include_discarded,
+                include_redacted=include_redacted,
+            )
+            if not rows:
+                typer.echo("No captures.")
+                return
+            for row in rows:
+                _print_capture(row)
+
+    _run(_do())
+
+
+@capture_app.command("find")
+def capture_find(
+    query: list[str] | None = typer.Argument(
+        None, help="Search query (joined with spaces). Omit for filter-only search."
+    ),
+    state: str | None = typer.Option(None, "--state", help="Filter by capture state."),
+    limit: int = typer.Option(50, "--limit"),
+    include_discarded: bool = typer.Option(False, "--include-discarded"),
+    include_redacted: bool = typer.Option(False, "--include-redacted"),
+) -> None:
+    """Full-text search over captures, newest first within rank."""
+    q = " ".join(query) if query else None
+
+    async def _do() -> None:
+        async with _backend() as b:
+            rows = await b.search_captures(
+                query=q,
+                review_state=state,
+                limit=limit,
+                include_discarded=include_discarded,
+                include_redacted=include_redacted,
+            )
+            if not rows:
+                typer.echo("No captures matched.")
+                return
+            for row in rows:
+                _print_capture(row)
+
+    _run(_do())
+
+
+@capture_app.command("state")
+def capture_state(
+    capture_id: str = typer.Argument(...),
+    state: str = typer.Argument(...),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Move a capture to another review state."""
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            row = await b.set_capture_state(capture_id, review_state=state, actor_id=aid)
+            typer.echo(f"Capture {row.id[:8]} -> {row.review_state}")
+
+    _run(_do())
+
+
+@capture_app.command("discard")
+def capture_discard(
+    capture_id: str = typer.Argument(...),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Discard a capture so default list/search hides it."""
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            row = await b.discard_capture(capture_id, actor_id=aid)
+            typer.echo(f"Capture {row.id[:8]} -> {row.review_state}")
+
+    _run(_do())
+
+
+@capture_app.command("redact")
+def capture_redact(
+    capture_id: str = typer.Argument(...),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Redact capture content from normal storage."""
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            row = await b.redact_capture(capture_id, redacted_by=aid)
+            typer.echo(f"Capture {row.id[:8]} -> {row.review_state}")
+
+    _run(_do())
+
+
+@capture_app.command("annotate")
+def capture_annotate(
+    capture_id: str = typer.Argument(...),
+    summary: str | None = typer.Option(None, "--summary"),
+    sensitivity_hint: str | None = typer.Option(None, "--sensitivity-hint"),
+    signals: str | None = typer.Option(
+        None,
+        "--signals",
+        help="JSON object of caller-supplied annotation signals.",
+    ),
+) -> None:
+    """Store caller-supplied BYOLLM annotation hints on a capture."""
+    import json
+
+    parsed_signals: Any | None = None
+    if signals is not None:
+        try:
+            parsed_signals = json.loads(signals)
+        except json.JSONDecodeError as exc:
+            typer.echo(f"Error: invalid JSON for --signals: {exc.msg}", err=True)
+            raise typer.Exit(2) from exc
+
+    async def _do() -> None:
+        async with _backend() as b:
+            row = await b.annotate_capture(
+                capture_id,
+                summary=summary,
+                sensitivity_hint=sensitivity_hint,
+                signals=parsed_signals,
+            )
+            typer.echo(f"Annotated capture: {row.id[:8]}")
+
+    _run(_do())
+
+
+@capture_app.command("promote")
+def capture_promote(
+    capture_id: str = typer.Argument(...),
+    item_type: str = typer.Option("knowledge", "--type", "-t"),
+    title: str = typer.Option(..., "--title"),
+    body: str | None = typer.Option(None, "--body"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Explicitly promote a capture into a curated item."""
+    pid = _cfg_project(project)
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            capture = await b.get_capture(capture_id)
+            if capture is None:
+                from luplo.core.errors import NotFoundError
+
+                raise NotFoundError(f"capture not found: {capture_id}")
+            item_body = body if body is not None else capture.text
+            promoted, item = await b.promote_capture_to_item(
+                capture_id,
+                ItemCreate(
+                    project_id=pid,
+                    actor_id=aid,
+                    item_type=item_type,
+                    title=title,
+                    body=item_body,
+                ),
+            )
+            typer.echo(
+                f"Promoted capture {promoted.id[:8]} -> {item.item_type}: {item.title}"
+                f" (id: {item.id})"
+            )
+
+    _run(_do())
+
+
 # ── Ideas ────────────────────────────────────────────────────────
 
 
@@ -1580,7 +1796,11 @@ def idea_add(
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
-    """Append an ideation note to a work unit (append-only, redact-only)."""
+    """Append an ideation note to a work unit (append-only, redact-only).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
+    """
     pid = _cfg_project(project)
     aid = _cfg_actor(actor)
     body = " ".join(text)
@@ -1613,7 +1833,11 @@ def idea_ls(
     ),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
-    """List ideas for a work unit, newest first."""
+    """List ideas for a work unit, newest first.
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
+    """
     pid = _cfg_project(project)
 
     async def _do() -> None:
@@ -1659,7 +1883,11 @@ def idea_find(
     limit: int = typer.Option(50, "--limit"),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
-    """Full-text search over ideas in a project. All filters are optional."""
+    """Full-text search over ideas in a project. All filters are optional.
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
+    """
     from luplo.core.timeparse import parse_since
 
     pid = _cfg_project(project)
@@ -1700,6 +1928,9 @@ def idea_redact(
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
     """Mark an idea redacted (idempotent).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
 
     ``--project`` scopes prefix resolution **and** the SQL predicate so a
     full UUID from another project cannot mutate this row. Aligned with

@@ -13,6 +13,7 @@ import httpx
 
 from luplo.core.impact import ImpactEdge, ImpactNode, ImpactResult
 from luplo.core.models import (
+    Capture,
     HistoryEntry,
     Idea,
     Item,
@@ -171,6 +172,107 @@ class RemoteBackend:
         resp = await self._client.get("/search", params=params)
         resp.raise_for_status()
         return [_parse_search_result(r) for r in resp.json()]
+
+    # ── Captures (HTTP endpoints land in luplo-saas — stubs for now) ─
+
+    async def add_capture(
+        self,
+        *,
+        text: str,
+        created_by: str | None = None,
+        summary: str | None = None,
+        sensitivity_hint: str = "none",
+        signals: dict[str, Any] | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def list_captures(
+        self,
+        *,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[Capture]:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def get_capture(self, capture_id: str) -> Capture | None:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def search_captures(
+        self,
+        *,
+        query: str | None = None,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+    ) -> list[Capture]:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def set_capture_state(
+        self,
+        capture_id: str,
+        *,
+        review_state: str,
+        actor_id: str | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def discard_capture(
+        self,
+        capture_id: str,
+        *,
+        actor_id: str | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def redact_capture(
+        self,
+        capture_id: str,
+        *,
+        redacted_by: str | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def annotate_capture(
+        self,
+        capture_id: str,
+        *,
+        summary: str | None = None,
+        sensitivity_hint: str | None = None,
+        signals: dict[str, Any] | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def promote_capture_to_item(
+        self,
+        capture_id: str,
+        data: ItemCreate,
+    ) -> tuple[Capture, Item]:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
 
     # ── Work Units ───────────────────────────────────────────────
 

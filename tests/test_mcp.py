@@ -53,6 +53,14 @@ def test_mcp_tools_registered() -> None:
         "luplo_idea_list",
         "luplo_idea_search",
         "luplo_idea_redact",
+        "luplo_capture_add",
+        "luplo_capture_list",
+        "luplo_capture_search",
+        "luplo_capture_set_state",
+        "luplo_capture_discard",
+        "luplo_capture_redact",
+        "luplo_capture_annotate",
+        "luplo_capture_promote",
     }
     missing = expected - tool_names
     assert not missing, f"Missing MCP tools: {missing}"
@@ -60,7 +68,18 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 29
+    assert len(tools) == 37
+
+
+def test_mcp_idea_tools_remain_available_for_compatibility() -> None:
+    tool_names = {t.name for t in mcp._tool_manager.list_tools()}
+
+    assert {
+        "luplo_idea_add",
+        "luplo_idea_list",
+        "luplo_idea_search",
+        "luplo_idea_redact",
+    } <= tool_names
 
 
 # ── Invocation tests ────────────────────────────────────────────
@@ -596,6 +615,105 @@ async def test_mcp_idea_add_and_list(mcp_backend: Any) -> None:
 
     listed = await mcp_mod.luplo_idea_list(work_unit_id=wu_id, project_id=_MCP_PROJECT)
     assert "refresh token rotation" in listed
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_capture_add_and_list(mcp_backend: Any) -> None:
+    added = await mcp_mod.luplo_capture_add(
+        text="mcp raw note",
+        actor_id=_MCP_ACTOR,
+    )
+    assert "Saved capture" in added
+
+    listed = await mcp_mod.luplo_capture_list(limit=10)
+    assert "mcp raw note" in listed
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_capture_search_state_discard_and_redact(mcp_backend: Any) -> None:
+    import re
+
+    added = await mcp_mod.luplo_capture_add("mcp secret target", actor_id=_MCP_ACTOR)
+    match = re.search(r"Saved capture: ([0-9a-f]{8})", added)
+    assert match, added
+    capture_id = match.group(1)
+
+    found = await mcp_mod.luplo_capture_search(query="mcp secret")
+    assert "mcp secret target" in found
+
+    changed = await mcp_mod.luplo_capture_set_state(
+        capture_id=capture_id,
+        review_state="backlog",
+        actor_id=_MCP_ACTOR,
+    )
+    assert "backlog" in changed
+
+    discarded = await mcp_mod.luplo_capture_discard(capture_id, actor_id=_MCP_ACTOR)
+    assert "discarded" in discarded
+
+    hidden = await mcp_mod.luplo_capture_search(query="mcp secret")
+    assert "mcp secret target" not in hidden
+
+    redacted = await mcp_mod.luplo_capture_redact(capture_id, actor_id=_MCP_ACTOR)
+    assert "redacted" in redacted
+
+    listed = await mcp_mod.luplo_capture_list(include_redacted=True)
+    assert "mcp secret target" not in listed
+    assert "[redacted]" in listed
+
+    after_redact = await mcp_mod.luplo_capture_search(
+        query="mcp secret target",
+        include_redacted=True,
+    )
+    assert "mcp secret target" not in after_redact
+    assert "No captures matched." in after_redact
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_capture_annotate(mcp_backend: Any) -> None:
+    import re
+
+    added = await mcp_mod.luplo_capture_add("mcp annotation target", actor_id=_MCP_ACTOR)
+    match = re.search(r"Saved capture: ([0-9a-f]{8})", added)
+    assert match, added
+    capture_id = match.group(1)
+
+    result = await mcp_mod.luplo_capture_annotate(
+        capture_id=capture_id,
+        summary="mcp summary text",
+        sensitivity_hint="possible",
+        signals={"tags": ["mcp"]},
+    )
+    assert "Annotated capture" in result
+
+    found = await mcp_mod.luplo_capture_search(query="mcp summary text")
+    assert "mcp annotation target" in found
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_capture_promote(mcp_backend: Any) -> None:
+    import re
+
+    added = await mcp_mod.luplo_capture_add("mcp promote me", actor_id=_MCP_ACTOR)
+    match = re.search(r"Saved capture: ([0-9a-f]{8})", added)
+    assert match, added
+    capture_id = match.group(1)
+
+    result = await mcp_mod.luplo_capture_promote(
+        capture_id=capture_id,
+        project_id=_MCP_PROJECT,
+        item_type="knowledge",
+        title="MCP promoted capture",
+        actor_id=_MCP_ACTOR,
+    )
+    assert "Promoted capture" in result
+    assert "MCP promoted capture" in result
+
+    found = await mcp_mod.luplo_item_search(query="MCP promoted", project_id=_MCP_PROJECT)
+    assert "MCP promoted capture" in found
+
+    promoted = await mcp_mod.luplo_capture_list(review_state="promoted")
+    assert "mcp promote me" in promoted
 
 
 @pytest.mark.asyncio(loop_scope="module")

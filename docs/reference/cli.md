@@ -96,6 +96,59 @@ Parentheses are not parsed; use De Morgan rewrites
 
 Resolves ID prefixes to the chain head.
 
+## Captures
+
+Captures are raw intake. They are separate from items and do not appear
+in item search. Use `lp capture promote` to create a curated item.
+
+Capture input is text-only and BYOLLM: luplo stores caller-provided text
+and optional annotations, but it does not transcribe, summarize,
+classify, infer sensitivity, or decide what should be promoted.
+
+| Command | Effect |
+|---|---|
+| `lp capture add TEXT...` | Save raw text to the capture backlog. Requires an actor in local mode. |
+| `lp capture ls` | List recent captures, newest first. Hidden by default: discarded and redacted rows. |
+| `lp capture find [QUERY...]` | Full-text search over capture text and optional summary. Omit `QUERY` for filter-only search. |
+| `lp capture annotate ID` | Store caller-supplied annotation hints. Options: `--summary`, `--sensitivity-hint`, `--signals` JSON object. |
+| `lp capture state ID STATE` | Move a capture to `captured`, `backlog`, `review`, `promoted`, or `discarded`. Use `redact` for redaction. |
+| `lp capture discard ID` | Mark a capture `discarded` so default list/search hides it. |
+| `lp capture redact ID` | Replace text/summary with `[redacted]`, clear signals, and remove original content from capture search. |
+| `lp capture promote ID --type TYPE --title TITLE` | Explicitly create a normal item through existing item validation and link it via `capture_promotions`. |
+
+Common options:
+
+| Flag | Description |
+|---|---|
+| `--state STATE` | Filter `ls` / `find` by capture state. |
+| `--include-discarded` | Include discarded rows in `ls` / `find`. |
+| `--include-redacted` | Include redacted rows in `ls` / `find`; content stays masked. |
+| `--limit N` | Limit result count. |
+| `--project`, `--actor` | Promotion uses project + actor to create the target item. |
+
+Promotion is the only path from raw captures into curated memory:
+
+```bash
+uv run lp capture add "raw thought from today"
+uv run lp capture find "raw thought"
+uv run lp capture promote <capture-id> --type knowledge --title "Useful pattern"
+uv run lp items search "Useful pattern"
+```
+
+## Ideas (legacy)
+
+Deprecated for raw intake. Use capture for unstructured backlog entries.
+Ideas remain for compatibility with work-unit-scoped ideation notes.
+
+Existing `lp idea` commands are still available and keep their behavior:
+
+| Command | Effect |
+|---|---|
+| `lp idea add TEXT... --wu <work-id>` | Append an ideation note to a work unit. If `--wu` is omitted, the active in-progress work unit is used. |
+| `lp idea ls --wu <work-id>` | List ideas for a work unit, newest first. |
+| `lp idea find [QUERY...]` | Search ideas within a project, optionally narrowed by work unit, author, or time. |
+| `lp idea redact <idea-id>` | Mark an idea redacted while preserving the row for compatibility and audit. |
+
 ## Work units
 
 ### `lp work open <title>`

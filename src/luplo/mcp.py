@@ -861,6 +861,194 @@ async def luplo_task_block(
     )
 
 
+# ── Captures (raw text intake) ──────────────────────────────────
+
+
+def _format_capture_line(capture: Any) -> str:
+    body = capture.text.replace("\n", " ")
+    if len(body) > 120:
+        body = body[:117] + "..."
+    return (
+        f"- [{capture.id[:8]}] {capture.created_at:%Y-%m-%d %H:%M} [{capture.review_state}] {body}"
+    )
+
+
+@mcp.tool()
+async def luplo_capture_add(text: str, actor_id: str = "claude") -> str:
+    """Save raw text into the capture backlog.
+
+    This tool is BYOLLM. The caller may summarize or classify before
+    calling, but luplo core only stores the provided text.
+    """
+    from luplo.core.errors import ValidationError
+
+    b = await _get_backend()
+    try:
+        capture = await b.add_capture(text=text, created_by=_resolve_actor(actor_id))
+    except ValidationError as exc:
+        return f"Error: {exc.message}"
+    return f"Saved capture: {capture.id[:8]} ({capture.review_state})"
+
+
+@mcp.tool()
+async def luplo_capture_list(
+    review_state: str = "",
+    limit: int = 100,
+    include_discarded: bool = False,
+    include_redacted: bool = False,
+) -> str:
+    """List recent captures, newest first."""
+    from luplo.core.errors import ValidationError
+
+    b = await _get_backend()
+    try:
+        rows = await b.list_captures(
+            review_state=review_state or None,
+            limit=limit,
+            include_discarded=include_discarded,
+            include_redacted=include_redacted,
+        )
+    except ValidationError as exc:
+        return f"Error: {exc.message}"
+    if not rows:
+        return "No captures."
+    lines = [f"Found {len(rows)} capture(s):"]
+    lines.extend(_format_capture_line(row) for row in rows)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def luplo_capture_search(
+    query: str = "",
+    review_state: str = "",
+    limit: int = 50,
+    include_discarded: bool = False,
+    include_redacted: bool = False,
+) -> str:
+    """Search recent captures by text and optional state."""
+    from luplo.core.errors import ValidationError
+
+    b = await _get_backend()
+    try:
+        rows = await b.search_captures(
+            query=query or None,
+            review_state=review_state or None,
+            limit=limit,
+            include_discarded=include_discarded,
+            include_redacted=include_redacted,
+        )
+    except ValidationError as exc:
+        return f"Error: {exc.message}"
+    if not rows:
+        return "No captures matched."
+    lines = [f"Found {len(rows)} capture(s):"]
+    lines.extend(_format_capture_line(row) for row in rows)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def luplo_capture_set_state(
+    capture_id: str,
+    review_state: str,
+    actor_id: str = "claude",
+) -> str:
+    """Move a capture to another review state."""
+    from luplo.core.errors import LuploDomainError
+
+    b = await _get_backend()
+    try:
+        row = await b.set_capture_state(
+            capture_id,
+            review_state=review_state,
+            actor_id=_resolve_actor(actor_id),
+        )
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Capture {row.id[:8]} -> {row.review_state}"
+
+
+@mcp.tool()
+async def luplo_capture_discard(capture_id: str, actor_id: str = "claude") -> str:
+    """Discard a capture so default list/search hides it."""
+    from luplo.core.errors import LuploDomainError
+
+    b = await _get_backend()
+    try:
+        row = await b.discard_capture(capture_id, actor_id=_resolve_actor(actor_id))
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Capture {row.id[:8]} -> {row.review_state}"
+
+
+@mcp.tool()
+async def luplo_capture_redact(capture_id: str, actor_id: str = "claude") -> str:
+    """Redact capture content from normal storage."""
+    from luplo.core.errors import LuploDomainError
+
+    b = await _get_backend()
+    try:
+        row = await b.redact_capture(capture_id, redacted_by=_resolve_actor(actor_id))
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Capture {row.id[:8]} -> {row.review_state}"
+
+
+@mcp.tool()
+async def luplo_capture_annotate(
+    capture_id: str,
+    summary: str = "",
+    sensitivity_hint: str = "",
+    signals: dict[str, Any] | None = None,
+) -> str:
+    """Store caller-supplied BYOLLM annotation hints on a capture."""
+    from luplo.core.errors import LuploDomainError
+
+    b = await _get_backend()
+    try:
+        row = await b.annotate_capture(
+            capture_id,
+            summary=summary or None,
+            sensitivity_hint=sensitivity_hint or None,
+            signals=signals,
+        )
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Annotated capture: {row.id[:8]}"
+
+
+@mcp.tool()
+async def luplo_capture_promote(
+    capture_id: str,
+    project_id: str,
+    item_type: str,
+    title: str,
+    body: str = "",
+    actor_id: str = "claude",
+) -> str:
+    """Explicitly promote a capture into a curated item."""
+    from luplo.core.errors import LuploDomainError, NotFoundError
+
+    b = await _get_backend()
+    try:
+        capture = await b.get_capture(capture_id)
+        if capture is None:
+            raise NotFoundError(f"capture not found: {capture_id}")
+        item_body = body or capture.text
+        promoted, item = await b.promote_capture_to_item(
+            capture_id,
+            ItemCreate(
+                project_id=project_id,
+                actor_id=_resolve_actor(actor_id),
+                item_type=item_type,
+                title=title,
+                body=item_body,
+            ),
+        )
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Promoted capture {promoted.id[:8]} -> {item.item_type}: {item.title} (id: {item.id})"
+
+
 # ── Ideas (append-only ideation notes) ──────────────────────────
 
 
@@ -893,6 +1081,9 @@ async def luplo_idea_add(
 ) -> str:
     """Append an ideation note to a work unit (append-only, redact-only).
 
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
+
     Use for half-formed thoughts, exploration trails, "what if" notes —
     anything you want to remember but is not yet a committed decision.
     Mistakes are recovered via ``luplo_idea_redact``; ideas are never
@@ -922,6 +1113,9 @@ async def luplo_idea_list(
     include_redacted: bool = False,
 ) -> str:
     """List ideas for a work unit (newest first).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
 
     ``project_id`` is **required** to prevent an 8-char prefix collision
     with another project's WU from matching, and to add a defence-in-depth
@@ -972,6 +1166,9 @@ async def luplo_idea_search(
     limit: int = 50,
 ) -> str:
     """Full-text search over ideas in a project (optionally narrowed by WU).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
 
     *query* and *tsquery* are mutually exclusive — pass at most one.
     Glossary expansion applies to *query*. Use *tsquery* for the raw
@@ -1053,6 +1250,9 @@ async def luplo_idea_redact(
     actor_id: str = "claude",
 ) -> str:
     """Mark an idea redacted (idempotent — no-op if already redacted).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
 
     Hides the idea from default list/search results. The row and ``text``
     column are **preserved** (audit metadata, not deletion); redacted_at

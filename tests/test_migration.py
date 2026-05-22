@@ -21,6 +21,8 @@ EXPECTED_TABLES = {
     "audit_log",
     "sync_jobs",
     "ideas",
+    "captures",
+    "capture_promotions",
 }
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -77,6 +79,60 @@ def test_migration_0008_ideas_table_columns(db_url: str) -> None:
         assert "idx_ideas_wu_created" in idx
         assert "idx_ideas_project_created" in idx
         assert "idx_ideas_text_fts" in idx
+
+
+def test_migration_0009_captures_tables(db_url: str) -> None:
+    """0009 creates raw capture tables with expected columns + indexes."""
+    with psycopg.connect(db_url) as conn:
+        rows = conn.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'captures'
+            ORDER BY ordinal_position
+            """
+        ).fetchall()
+        assert [r[0] for r in rows] == [
+            "id",
+            "text",
+            "summary",
+            "review_state",
+            "sensitivity_hint",
+            "signals",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "redacted_at",
+            "redacted_by",
+            "search_tsv",
+        ]
+
+        promo_rows = conn.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'capture_promotions'
+            ORDER BY ordinal_position
+            """
+        ).fetchall()
+        assert [r[0] for r in promo_rows] == [
+            "capture_id",
+            "target_item_id",
+            "promoted_as",
+            "created_by",
+            "created_at",
+        ]
+
+        idx = {
+            r[0]
+            for r in conn.execute(
+                "SELECT indexname FROM pg_indexes WHERE tablename = 'captures'"
+            ).fetchall()
+        }
+        assert "idx_captures_created" in idx
+        assert "idx_captures_state_created" in idx
+        assert "idx_captures_search_tsv" in idx
+        assert "idx_captures_signals" in idx
 
 
 def test_downgrade_removes_tables(db_url: str) -> None:
