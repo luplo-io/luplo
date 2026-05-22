@@ -861,6 +861,63 @@ async def luplo_task_block(
     )
 
 
+# ── Captures (raw text intake) ──────────────────────────────────
+
+
+def _format_capture_line(capture: Any) -> str:
+    body = capture.text.replace("\n", " ")
+    if len(body) > 120:
+        body = body[:117] + "..."
+    return (
+        f"- [{capture.id[:8]}] {capture.created_at:%Y-%m-%d %H:%M}"
+        f" [{capture.review_state}] {body}"
+    )
+
+
+@mcp.tool()
+async def luplo_capture_add(text: str, actor_id: str = "claude") -> str:
+    """Save raw text into the capture backlog.
+
+    This tool is BYOLLM. The caller may summarize or classify before
+    calling, but luplo core only stores the provided text.
+    """
+    from luplo.core.errors import ValidationError
+
+    b = await _get_backend()
+    try:
+        capture = await b.add_capture(text=text, created_by=_resolve_actor(actor_id))
+    except ValidationError as exc:
+        return f"Error: {exc.message}"
+    return f"Saved capture: {capture.id[:8]} ({capture.review_state})"
+
+
+@mcp.tool()
+async def luplo_capture_list(
+    review_state: str = "",
+    limit: int = 100,
+    include_discarded: bool = False,
+    include_redacted: bool = False,
+) -> str:
+    """List recent captures, newest first."""
+    from luplo.core.errors import ValidationError
+
+    b = await _get_backend()
+    try:
+        rows = await b.list_captures(
+            review_state=review_state or None,
+            limit=limit,
+            include_discarded=include_discarded,
+            include_redacted=include_redacted,
+        )
+    except ValidationError as exc:
+        return f"Error: {exc.message}"
+    if not rows:
+        return "No captures."
+    lines = [f"Found {len(rows)} capture(s):"]
+    lines.extend(_format_capture_line(row) for row in rows)
+    return "\n".join(lines)
+
+
 # ── Ideas (append-only ideation notes) ──────────────────────────
 
 

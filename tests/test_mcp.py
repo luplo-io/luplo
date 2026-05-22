@@ -53,6 +53,8 @@ def test_mcp_tools_registered() -> None:
         "luplo_idea_list",
         "luplo_idea_search",
         "luplo_idea_redact",
+        "luplo_capture_add",
+        "luplo_capture_list",
     }
     missing = expected - tool_names
     assert not missing, f"Missing MCP tools: {missing}"
@@ -60,7 +62,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 29
+    assert len(tools) == 31
 
 
 # ── Invocation tests ────────────────────────────────────────────
@@ -596,6 +598,18 @@ async def test_mcp_idea_add_and_list(mcp_backend: Any) -> None:
 
     listed = await mcp_mod.luplo_idea_list(work_unit_id=wu_id, project_id=_MCP_PROJECT)
     assert "refresh token rotation" in listed
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_capture_add_and_list(mcp_backend: Any) -> None:
+    added = await mcp_mod.luplo_capture_add(
+        text="mcp raw note",
+        actor_id=_MCP_ACTOR,
+    )
+    assert "Saved capture" in added
+
+    listed = await mcp_mod.luplo_capture_list(limit=10)
+    assert "mcp raw note" in listed
 
 
 @pytest.mark.asyncio(loop_scope="module")
