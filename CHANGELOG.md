@@ -12,6 +12,11 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 ## [Unreleased]
 
 ### Added
+- (none)
+
+## [0.15.0] - 2026-05-22
+
+### Added
 - Added `captures`, a raw text intake primitive outside the curated
   `items` graph. Captures support add/list/search/state/annotation/
   redaction/promotion through core, CLI, and MCP. Core remains BYOLLM:
@@ -517,7 +522,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/luplo-io/luplo/releases/tag/v0.15.0
 [0.14.1]: https://github.com/luplo-io/luplo/releases/tag/v0.14.1
 [0.13.0]: https://github.com/luplo-io/luplo/releases/tag/v0.13.0
 [0.12.0]: https://github.com/luplo-io/luplo/releases/tag/v0.12.0
