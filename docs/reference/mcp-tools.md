@@ -84,6 +84,122 @@ Query the `items_history` table for semantic changes.
 
 See {doc}`semantic-impact` for the seven categories.
 
+## Captures
+
+Captures are a raw text intake surface outside the curated `items`
+graph. Capture tools are deterministic and BYOLLM: caller LLMs may
+reason before calling them, but luplo core only stores the supplied
+text, annotations, state changes, redactions, and explicit promotions.
+It does not transcribe, summarize, classify, infer sensitivity, or
+choose what becomes an item.
+
+Capture search/list results are separate from item search. A capture
+appears in `luplo_item_search` only after an explicit
+`luplo_capture_promote` call creates a normal item.
+
+### `luplo_capture_add`
+
+Save raw text into the capture backlog.
+
+```json
+{
+  "text": "raw thought from today",
+  "actor_id": "claude"
+}
+```
+
+Returns a short acknowledgement with the capture id prefix and state.
+
+### `luplo_capture_list`
+
+List recent captures, newest first.
+
+```json
+{
+  "review_state": "",
+  "limit": 100,
+  "include_discarded": false,
+  "include_redacted": false
+}
+```
+
+Discarded and redacted captures are hidden unless requested. Redacted
+captures stay masked.
+
+### `luplo_capture_search`
+
+Search capture text and optional summary.
+
+```json
+{
+  "query": "people issue",
+  "review_state": "",
+  "limit": 50,
+  "include_discarded": false,
+  "include_redacted": false
+}
+```
+
+Pass an empty query for filter-only review flows.
+
+### `luplo_capture_annotate`
+
+Store caller-supplied annotation hints.
+
+```json
+{
+  "capture_id": "<capture-id>",
+  "summary": "caller supplied summary",
+  "sensitivity_hint": "possible",
+  "signals": {"tags": ["people_issue"], "confidence": 0.64}
+}
+```
+
+`signals` must be a JSON object. Core stores it as a hint, not truth.
+
+### `luplo_capture_set_state`
+
+Move a capture between review states.
+
+```json
+{
+  "capture_id": "<capture-id>",
+  "review_state": "review",
+  "actor_id": "claude"
+}
+```
+
+Use `luplo_capture_redact` for the `redacted` state.
+
+### `luplo_capture_discard`
+
+Mark a capture `discarded` so default list/search hides it.
+
+### `luplo_capture_redact`
+
+Replace capture text/summary with `[redacted]`, clear signals, stamp
+redaction metadata, and remove original content from capture search.
+
+### `luplo_capture_promote`
+
+Explicitly promote a capture into a curated item.
+
+```json
+{
+  "capture_id": "<capture-id>",
+  "project_id": "myapp",
+  "item_type": "knowledge",
+  "title": "Useful pattern",
+  "body": "",
+  "actor_id": "claude"
+}
+```
+
+`project_id` is required because the target item is project-scoped. If
+`body` is empty, the tool uses the capture text. Promotion creates a
+normal item through the existing item creation path and records a
+`capture_promotions` bridge row.
+
 ## Audit (blast radius)
 
 ### `luplo_impact`

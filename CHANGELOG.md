@@ -11,6 +11,13 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+### Added
+- Added `captures`, a raw text intake primitive outside the curated
+  `items` graph. Captures support add/list/search/state/annotation/
+  redaction/promotion through core, CLI, and MCP. Core remains BYOLLM:
+  callers provide optional summary/signals; luplo stores them without
+  inference.
+
 ## [0.14.1] - 2026-05-06
 
 0.14.0 was never published; the initial `ideas` feature ships as 0.14.1
