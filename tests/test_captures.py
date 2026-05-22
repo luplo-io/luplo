@@ -40,7 +40,9 @@ async def test_list_captures_hides_discarded_and_redacted_by_default(
 
     visible = await add_capture(conn, text="visible", created_by=seed_actor)  # type: ignore[arg-type]
     discarded = await add_capture(
-        conn, text="discarded", created_by=seed_actor  # type: ignore[arg-type]
+        conn,
+        text="discarded",
+        created_by=seed_actor,  # type: ignore[arg-type]
     )
     redacted = await add_capture(conn, text="secret", created_by=seed_actor)  # type: ignore[arg-type]
 
@@ -105,7 +107,10 @@ async def test_set_capture_state_updates_state(conn: object, seed_actor: str) ->
 
     capture = await add_capture(conn, text="state target")  # type: ignore[arg-type]
     changed = await set_capture_state(
-        conn, capture.id[:8], review_state="backlog", actor_id=seed_actor  # type: ignore[arg-type]
+        conn,
+        capture.id[:8],
+        review_state="backlog",
+        actor_id=seed_actor,  # type: ignore[arg-type]
     )
 
     assert changed.review_state == "backlog"
@@ -138,7 +143,9 @@ async def test_redact_capture_removes_original_content_from_search(
     assert redacted.redacted_by == seed_actor
 
     rows = await search_captures(
-        conn, query="very secret raw phrase", include_redacted=True  # type: ignore[arg-type]
+        conn,
+        query="very secret raw phrase",
+        include_redacted=True,  # type: ignore[arg-type]
     )
     assert rows == []
 

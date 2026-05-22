@@ -869,8 +869,7 @@ def _format_capture_line(capture: Any) -> str:
     if len(body) > 120:
         body = body[:117] + "..."
     return (
-        f"- [{capture.id[:8]}] {capture.created_at:%Y-%m-%d %H:%M}"
-        f" [{capture.review_state}] {body}"
+        f"- [{capture.id[:8]}] {capture.created_at:%Y-%m-%d %H:%M} [{capture.review_state}] {body}"
     )
 
 
@@ -1047,10 +1046,7 @@ async def luplo_capture_promote(
         )
     except LuploDomainError as exc:
         return f"Error: {exc.message}"
-    return (
-        f"Promoted capture {promoted.id[:8]} -> {item.item_type}: {item.title}"
-        f" (id: {item.id})"
-    )
+    return f"Promoted capture {promoted.id[:8]} -> {item.item_type}: {item.title} (id: {item.id})"
 
 
 # ── Ideas (append-only ideation notes) ──────────────────────────

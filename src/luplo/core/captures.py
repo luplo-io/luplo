@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
@@ -73,12 +73,12 @@ def _validate_sensitivity_hint(sensitivity_hint: str) -> None:
         raise ValidationError(f"invalid sensitivity hint: {sensitivity_hint}")
 
 
-def _validate_signals(signals: dict[str, Any] | None) -> dict[str, Any]:
+def _validate_signals(signals: object | None) -> dict[str, Any]:
     if signals is None:
         return {}
     if not isinstance(signals, dict):
         raise ValidationError("signals must be a JSON object")
-    return signals
+    return cast("dict[str, Any]", signals)
 
 
 async def add_capture(
@@ -171,9 +171,7 @@ async def get_capture(
     resolved = await resolve_uuid_prefix(conn, "captures", capture_id, label_column="id")
     if resolved is None:
         return None
-    query = sql.SQL("SELECT {columns} FROM captures WHERE id = %(id)s").format(
-        columns=_RETURNING
-    )
+    query = sql.SQL("SELECT {columns} FROM captures WHERE id = %(id)s").format(columns=_RETURNING)
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, {"id": resolved})
         row = await cur.fetchone()
@@ -263,9 +261,7 @@ async def discard_capture(
     *,
     actor_id: str | None = None,
 ) -> Capture:
-    return await set_capture_state(
-        conn, capture_id, review_state="discarded", actor_id=actor_id
-    )
+    return await set_capture_state(conn, capture_id, review_state="discarded", actor_id=actor_id)
 
 
 async def redact_capture(
