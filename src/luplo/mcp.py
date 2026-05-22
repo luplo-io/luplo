@@ -1017,6 +1017,42 @@ async def luplo_capture_annotate(
     return f"Annotated capture: {row.id[:8]}"
 
 
+@mcp.tool()
+async def luplo_capture_promote(
+    capture_id: str,
+    project_id: str,
+    item_type: str,
+    title: str,
+    body: str = "",
+    actor_id: str = "claude",
+) -> str:
+    """Explicitly promote a capture into a curated item."""
+    from luplo.core.errors import LuploDomainError, NotFoundError
+
+    b = await _get_backend()
+    try:
+        capture = await b.get_capture(capture_id)
+        if capture is None:
+            raise NotFoundError(f"capture not found: {capture_id}")
+        item_body = body or capture.text
+        promoted, item = await b.promote_capture_to_item(
+            capture_id,
+            ItemCreate(
+                project_id=project_id,
+                actor_id=_resolve_actor(actor_id),
+                item_type=item_type,
+                title=title,
+                body=item_body,
+            ),
+        )
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return (
+        f"Promoted capture {promoted.id[:8]} -> {item.item_type}: {item.title}"
+        f" (id: {item.id})"
+    )
+
+
 # ── Ideas (append-only ideation notes) ──────────────────────────
 
 

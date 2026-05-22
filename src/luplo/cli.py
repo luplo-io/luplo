@@ -1708,6 +1708,45 @@ def capture_annotate(
     _run(_do())
 
 
+@capture_app.command("promote")
+def capture_promote(
+    capture_id: str = typer.Argument(...),
+    item_type: str = typer.Option("knowledge", "--type", "-t"),
+    title: str = typer.Option(..., "--title"),
+    body: str | None = typer.Option(None, "--body"),
+    project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Explicitly promote a capture into a curated item."""
+    pid = _cfg_project(project)
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            capture = await b.get_capture(capture_id)
+            if capture is None:
+                from luplo.core.errors import NotFoundError
+
+                raise NotFoundError(f"capture not found: {capture_id}")
+            item_body = body if body is not None else capture.text
+            promoted, item = await b.promote_capture_to_item(
+                capture_id,
+                ItemCreate(
+                    project_id=pid,
+                    actor_id=aid,
+                    item_type=item_type,
+                    title=title,
+                    body=item_body,
+                ),
+            )
+            typer.echo(
+                f"Promoted capture {promoted.id[:8]} -> {item.item_type}: {item.title}"
+                f" (id: {item.id})"
+            )
+
+    _run(_do())
+
+
 # ── Ideas ────────────────────────────────────────────────────────
 
 

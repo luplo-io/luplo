@@ -60,6 +60,7 @@ def test_mcp_tools_registered() -> None:
         "luplo_capture_discard",
         "luplo_capture_redact",
         "luplo_capture_annotate",
+        "luplo_capture_promote",
     }
     missing = expected - tool_names
     assert not missing, f"Missing MCP tools: {missing}"
@@ -67,7 +68,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 36
+    assert len(tools) == 37
 
 
 # ── Invocation tests ────────────────────────────────────────────
@@ -676,6 +677,32 @@ async def test_mcp_capture_annotate(mcp_backend: Any) -> None:
 
     found = await mcp_mod.luplo_capture_search(query="mcp summary text")
     assert "mcp annotation target" in found
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_capture_promote(mcp_backend: Any) -> None:
+    import re
+
+    added = await mcp_mod.luplo_capture_add("mcp promote me", actor_id=_MCP_ACTOR)
+    match = re.search(r"Saved capture: ([0-9a-f]{8})", added)
+    assert match, added
+    capture_id = match.group(1)
+
+    result = await mcp_mod.luplo_capture_promote(
+        capture_id=capture_id,
+        project_id=_MCP_PROJECT,
+        item_type="knowledge",
+        title="MCP promoted capture",
+        actor_id=_MCP_ACTOR,
+    )
+    assert "Promoted capture" in result
+    assert "MCP promoted capture" in result
+
+    found = await mcp_mod.luplo_item_search(query="MCP promoted", project_id=_MCP_PROJECT)
+    assert "MCP promoted capture" in found
+
+    promoted = await mcp_mod.luplo_capture_list(review_state="promoted")
+    assert "mcp promote me" in promoted
 
 
 @pytest.mark.asyncio(loop_scope="module")

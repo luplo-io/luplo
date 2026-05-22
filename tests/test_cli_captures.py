@@ -10,6 +10,7 @@ from luplo.cli import app
 
 runner = CliRunner()
 
+_CLI_PROJECT = "cli-captures-test-project"
 _CLI_ACTOR = "00000000-0000-0000-0000-0000000000c3"
 
 
@@ -17,6 +18,7 @@ _CLI_ACTOR = "00000000-0000-0000-0000-0000000000c3"
 def env(db_url: str) -> dict[str, str]:
     return {
         "LUPLO_DB_URL": db_url,
+        "LUPLO_PROJECT": _CLI_PROJECT,
         "LUPLO_ACTOR_ID": _CLI_ACTOR,
     }
 
@@ -24,6 +26,10 @@ def env(db_url: str) -> dict[str, str]:
 @pytest.fixture(autouse=True)
 def _seed(db_url: str) -> None:
     with psycopg.connect(db_url) as conn:
+        conn.execute(
+            "INSERT INTO projects (id, name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (_CLI_PROJECT, "CLI Captures Test"),
+        )
         conn.execute(
             "INSERT INTO actors (id, name, email) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
             (_CLI_ACTOR, "CLI Captures Actor", "captures@test.com"),
@@ -139,3 +145,35 @@ def test_capture_annotate_rejects_invalid_signals_json(env: dict[str, str]) -> N
 
     assert result.exit_code == 2
     assert "invalid JSON for --signals" in result.output
+
+
+def test_capture_promote_creates_item(env: dict[str, str]) -> None:
+    added = runner.invoke(app, ["capture", "add", "promote me"], env=env)
+    capture_id = added.output.split("Saved capture: ", 1)[1][:8]
+
+    result = runner.invoke(
+        app,
+        [
+            "capture",
+            "promote",
+            capture_id,
+            "--type",
+            "knowledge",
+            "--title",
+            "Promoted capture",
+            "--body",
+            "promote me",
+        ],
+        env=env,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Promoted capture" in result.output
+
+    items = runner.invoke(app, ["items", "search", "promote"], env=env)
+    assert items.exit_code == 0, items.output
+    assert "Promoted capture" in items.output
+
+    captures = runner.invoke(app, ["capture", "ls", "--state", "promoted"], env=env)
+    assert captures.exit_code == 0, captures.output
+    assert "promote me" in captures.output
