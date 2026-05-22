@@ -1593,6 +1593,86 @@ def capture_ls(
     _run(_do())
 
 
+@capture_app.command("find")
+def capture_find(
+    query: list[str] | None = typer.Argument(
+        None, help="Search query (joined with spaces). Omit for filter-only search."
+    ),
+    state: str | None = typer.Option(None, "--state", help="Filter by capture state."),
+    limit: int = typer.Option(50, "--limit"),
+    include_discarded: bool = typer.Option(False, "--include-discarded"),
+    include_redacted: bool = typer.Option(False, "--include-redacted"),
+) -> None:
+    """Full-text search over captures, newest first within rank."""
+    q = " ".join(query) if query else None
+
+    async def _do() -> None:
+        async with _backend() as b:
+            rows = await b.search_captures(
+                query=q,
+                review_state=state,
+                limit=limit,
+                include_discarded=include_discarded,
+                include_redacted=include_redacted,
+            )
+            if not rows:
+                typer.echo("No captures matched.")
+                return
+            for row in rows:
+                _print_capture(row)
+
+    _run(_do())
+
+
+@capture_app.command("state")
+def capture_state(
+    capture_id: str = typer.Argument(...),
+    state: str = typer.Argument(...),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Move a capture to another review state."""
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            row = await b.set_capture_state(capture_id, review_state=state, actor_id=aid)
+            typer.echo(f"Capture {row.id[:8]} -> {row.review_state}")
+
+    _run(_do())
+
+
+@capture_app.command("discard")
+def capture_discard(
+    capture_id: str = typer.Argument(...),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Discard a capture so default list/search hides it."""
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            row = await b.discard_capture(capture_id, actor_id=aid)
+            typer.echo(f"Capture {row.id[:8]} -> {row.review_state}")
+
+    _run(_do())
+
+
+@capture_app.command("redact")
+def capture_redact(
+    capture_id: str = typer.Argument(...),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Redact capture content from normal storage."""
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            row = await b.redact_capture(capture_id, redacted_by=aid)
+            typer.echo(f"Capture {row.id[:8]} -> {row.review_state}")
+
+    _run(_do())
+
+
 # ── Ideas ────────────────────────────────────────────────────────
 
 

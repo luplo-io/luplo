@@ -51,3 +51,49 @@ def test_capture_add_rejects_empty(env: dict[str, str]) -> None:
 
     assert result.exit_code == 2
     assert "capture text must not be empty" in result.output
+
+
+def test_capture_find(env: dict[str, str]) -> None:
+    runner.invoke(app, ["capture", "add", "family dinner reaction"], env=env)
+    runner.invoke(app, ["capture", "add", "game combat idea"], env=env)
+
+    result = runner.invoke(app, ["capture", "find", "family", "dinner"], env=env)
+
+    assert result.exit_code == 0, result.output
+    assert "family dinner reaction" in result.output
+    assert "game combat idea" not in result.output
+
+
+def test_capture_state_and_discard(env: dict[str, str]) -> None:
+    added = runner.invoke(app, ["capture", "add", "discard target"], env=env)
+    capture_id = added.output.split("Saved capture: ", 1)[1][:8]
+
+    state_result = runner.invoke(app, ["capture", "state", capture_id, "backlog"], env=env)
+    assert state_result.exit_code == 0, state_result.output
+    assert "backlog" in state_result.output
+
+    discard_result = runner.invoke(app, ["capture", "discard", capture_id], env=env)
+    assert discard_result.exit_code == 0, discard_result.output
+    assert "discarded" in discard_result.output
+
+    listed = runner.invoke(app, ["capture", "ls"], env=env)
+    assert "discard target" not in listed.output
+
+
+def test_capture_redact_masks_content(env: dict[str, str]) -> None:
+    added = runner.invoke(app, ["capture", "add", "sensitive raw phrase"], env=env)
+    capture_id = added.output.split("Saved capture: ", 1)[1][:8]
+
+    result = runner.invoke(app, ["capture", "redact", capture_id], env=env)
+    assert result.exit_code == 0, result.output
+    assert "redacted" in result.output
+
+    listed = runner.invoke(app, ["capture", "ls", "--include-redacted"], env=env)
+    assert "sensitive raw phrase" not in listed.output
+    assert "[redacted]" in listed.output
+
+    found = runner.invoke(
+        app, ["capture", "find", "sensitive", "raw", "phrase", "--include-redacted"], env=env
+    )
+    assert "sensitive raw phrase" not in found.output
+    assert "No captures matched." in found.output
