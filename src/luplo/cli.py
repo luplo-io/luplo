@@ -67,6 +67,7 @@ glossary_term_app = typer.Typer(name="term", help="Manage glossary terms.")
 task_app = typer.Typer(name="task", help="Manage tasks (item_type='task').")
 qa_app = typer.Typer(name="qa", help="Manage QA checks (item_type='qa_check').")
 idea_app = typer.Typer(name="idea", help="Append-only ideation notes on a work unit.")
+capture_app = typer.Typer(name="capture", help="Raw text capture backlog.")
 import_app = typer.Typer(name="import", help="Import spec/plan markdown into a luplo work_unit.")
 
 app.add_typer(items_app)
@@ -78,6 +79,7 @@ glossary_app.add_typer(glossary_term_app)
 app.add_typer(task_app)
 app.add_typer(qa_app)
 app.add_typer(idea_app)
+app.add_typer(capture_app)
 app.add_typer(import_app)
 
 
@@ -1531,6 +1533,62 @@ def qa_assign(
         async with _backend() as b:
             q = await b.assign_qa(qa_id, actor_id=aid, assignee_actor_id=assignee, project_id=pid)
             _print_qa(q)
+
+    _run(_do())
+
+
+# ── Captures ─────────────────────────────────────────────────────
+
+
+def _print_capture(capture: Any) -> None:
+    body = capture.text.replace("\n", " ")
+    if len(body) > 120:
+        body = body[:117] + "..."
+    typer.echo(
+        f"  {capture.id[:8]}  {capture.created_at:%Y-%m-%d %H:%M}"
+        f"  [{capture.review_state}]  {body}"
+    )
+
+
+@capture_app.command("add")
+def capture_add(
+    text: list[str] = typer.Argument(..., help="Raw capture text (joined with spaces)."),
+    actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
+) -> None:
+    """Save raw text into the capture backlog."""
+    body = " ".join(text)
+    aid = _cfg_actor(actor)
+
+    async def _do() -> None:
+        async with _backend() as b:
+            capture = await b.add_capture(text=body, created_by=aid)
+            typer.echo(f"Saved capture: {capture.id[:8]} ({capture.review_state})")
+
+    _run(_do())
+
+
+@capture_app.command("ls")
+def capture_ls(
+    state: str | None = typer.Option(None, "--state", help="Filter by capture state."),
+    limit: int = typer.Option(100, "--limit"),
+    include_discarded: bool = typer.Option(False, "--include-discarded"),
+    include_redacted: bool = typer.Option(False, "--include-redacted"),
+) -> None:
+    """List recent captures, newest first."""
+
+    async def _do() -> None:
+        async with _backend() as b:
+            rows = await b.list_captures(
+                review_state=state,
+                limit=limit,
+                include_discarded=include_discarded,
+                include_redacted=include_redacted,
+            )
+            if not rows:
+                typer.echo("No captures.")
+                return
+            for row in rows:
+                _print_capture(row)
 
     _run(_do())
 
