@@ -97,3 +97,45 @@ def test_capture_redact_masks_content(env: dict[str, str]) -> None:
     )
     assert "sensitive raw phrase" not in found.output
     assert "No captures matched." in found.output
+
+
+def test_capture_annotate(env: dict[str, str]) -> None:
+    added = runner.invoke(app, ["capture", "add", "annotation target"], env=env)
+    capture_id = added.output.split("Saved capture: ", 1)[1][:8]
+
+    result = runner.invoke(
+        app,
+        [
+            "capture",
+            "annotate",
+            capture_id,
+            "--summary",
+            "summary text",
+            "--sensitivity-hint",
+            "possible",
+            "--signals",
+            '{"tags":["people_issue"]}',
+        ],
+        env=env,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Annotated capture" in result.output
+
+    found = runner.invoke(app, ["capture", "find", "summary", "text"], env=env)
+    assert found.exit_code == 0, found.output
+    assert "annotation target" in found.output
+
+
+def test_capture_annotate_rejects_invalid_signals_json(env: dict[str, str]) -> None:
+    added = runner.invoke(app, ["capture", "add", "bad signals target"], env=env)
+    capture_id = added.output.split("Saved capture: ", 1)[1][:8]
+
+    result = runner.invoke(
+        app,
+        ["capture", "annotate", capture_id, "--signals", "["],
+        env=env,
+    )
+
+    assert result.exit_code == 2
+    assert "invalid JSON for --signals" in result.output

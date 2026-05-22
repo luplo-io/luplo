@@ -59,6 +59,7 @@ def test_mcp_tools_registered() -> None:
         "luplo_capture_set_state",
         "luplo_capture_discard",
         "luplo_capture_redact",
+        "luplo_capture_annotate",
     }
     missing = expected - tool_names
     assert not missing, f"Missing MCP tools: {missing}"
@@ -66,7 +67,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 35
+    assert len(tools) == 36
 
 
 # ── Invocation tests ────────────────────────────────────────────
@@ -654,6 +655,27 @@ async def test_mcp_capture_search_state_discard_and_redact(mcp_backend: Any) -> 
     )
     assert "mcp secret target" not in after_redact
     assert "No captures matched." in after_redact
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_capture_annotate(mcp_backend: Any) -> None:
+    import re
+
+    added = await mcp_mod.luplo_capture_add("mcp annotation target", actor_id=_MCP_ACTOR)
+    match = re.search(r"Saved capture: ([0-9a-f]{8})", added)
+    assert match, added
+    capture_id = match.group(1)
+
+    result = await mcp_mod.luplo_capture_annotate(
+        capture_id=capture_id,
+        summary="mcp summary text",
+        sensitivity_hint="possible",
+        signals={"tags": ["mcp"]},
+    )
+    assert "Annotated capture" in result
+
+    found = await mcp_mod.luplo_capture_search(query="mcp summary text")
+    assert "mcp annotation target" in found
 
 
 @pytest.mark.asyncio(loop_scope="module")

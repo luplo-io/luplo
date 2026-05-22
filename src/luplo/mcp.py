@@ -994,6 +994,29 @@ async def luplo_capture_redact(capture_id: str, actor_id: str = "claude") -> str
     return f"Capture {row.id[:8]} -> {row.review_state}"
 
 
+@mcp.tool()
+async def luplo_capture_annotate(
+    capture_id: str,
+    summary: str = "",
+    sensitivity_hint: str = "",
+    signals: dict[str, Any] | None = None,
+) -> str:
+    """Store caller-supplied BYOLLM annotation hints on a capture."""
+    from luplo.core.errors import LuploDomainError
+
+    b = await _get_backend()
+    try:
+        row = await b.annotate_capture(
+            capture_id,
+            summary=summary or None,
+            sensitivity_hint=sensitivity_hint or None,
+            signals=signals,
+        )
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Annotated capture: {row.id[:8]}"
+
+
 # ── Ideas (append-only ideation notes) ──────────────────────────
 
 

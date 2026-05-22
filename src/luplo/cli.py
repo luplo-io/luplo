@@ -1673,6 +1673,41 @@ def capture_redact(
     _run(_do())
 
 
+@capture_app.command("annotate")
+def capture_annotate(
+    capture_id: str = typer.Argument(...),
+    summary: str | None = typer.Option(None, "--summary"),
+    sensitivity_hint: str | None = typer.Option(None, "--sensitivity-hint"),
+    signals: str | None = typer.Option(
+        None,
+        "--signals",
+        help="JSON object of caller-supplied annotation signals.",
+    ),
+) -> None:
+    """Store caller-supplied BYOLLM annotation hints on a capture."""
+    import json
+
+    parsed_signals: Any | None = None
+    if signals is not None:
+        try:
+            parsed_signals = json.loads(signals)
+        except json.JSONDecodeError as exc:
+            typer.echo(f"Error: invalid JSON for --signals: {exc.msg}", err=True)
+            raise typer.Exit(2) from exc
+
+    async def _do() -> None:
+        async with _backend() as b:
+            row = await b.annotate_capture(
+                capture_id,
+                summary=summary,
+                sensitivity_hint=sensitivity_hint,
+                signals=parsed_signals,
+            )
+            typer.echo(f"Annotated capture: {row.id[:8]}")
+
+    _run(_do())
+
+
 # ── Ideas ────────────────────────────────────────────────────────
 
 
