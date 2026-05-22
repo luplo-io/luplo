@@ -135,6 +135,20 @@ uv run lp capture promote <capture-id> --type knowledge --title "Useful pattern"
 uv run lp items search "Useful pattern"
 ```
 
+## Ideas (legacy)
+
+Deprecated for raw intake. Use capture for unstructured backlog entries.
+Ideas remain for compatibility with work-unit-scoped ideation notes.
+
+Existing `lp idea` commands are still available and keep their behavior:
+
+| Command | Effect |
+|---|---|
+| `lp idea add TEXT... --wu <work-id>` | Append an ideation note to a work unit. If `--wu` is omitted, the active in-progress work unit is used. |
+| `lp idea ls --wu <work-id>` | List ideas for a work unit, newest first. |
+| `lp idea find [QUERY...]` | Search ideas within a project, optionally narrowed by work unit, author, or time. |
+| `lp idea redact <idea-id>` | Mark an idea redacted while preserving the row for compatibility and audit. |
+
 ## Work units
 
 ### `lp work open <title>`

@@ -71,6 +71,17 @@ def test_mcp_tool_count() -> None:
     assert len(tools) == 37
 
 
+def test_mcp_idea_tools_remain_available_for_compatibility() -> None:
+    tool_names = {t.name for t in mcp._tool_manager.list_tools()}
+
+    assert {
+        "luplo_idea_add",
+        "luplo_idea_list",
+        "luplo_idea_search",
+        "luplo_idea_redact",
+    } <= tool_names
+
+
 # ── Invocation tests ────────────────────────────────────────────
 
 _MCP_PROJECT = "mcp-test-project"

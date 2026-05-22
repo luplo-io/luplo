@@ -61,6 +61,14 @@ def _close_wu(db_url: str, wu_id: str) -> None:
         conn.commit()
 
 
+def test_idea_commands_remain_available() -> None:
+    result = runner.invoke(app, ["idea", "--help"])
+
+    assert result.exit_code == 0, result.output
+    for command in ("add", "ls", "find", "redact"):
+        assert command in result.output
+
+
 def test_idea_add_with_explicit_wu(env: dict[str, str], db_url: str) -> None:
     wu_id = _seed_wu(db_url)
     result = runner.invoke(app, ["idea", "add", "refresh token swap idea", "--wu", wu_id], env=env)

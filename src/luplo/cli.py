@@ -66,7 +66,11 @@ glossary_group_app = typer.Typer(name="group", help="Manage glossary groups.")
 glossary_term_app = typer.Typer(name="term", help="Manage glossary terms.")
 task_app = typer.Typer(name="task", help="Manage tasks (item_type='task').")
 qa_app = typer.Typer(name="qa", help="Manage QA checks (item_type='qa_check').")
-idea_app = typer.Typer(name="idea", help="Append-only ideation notes on a work unit.")
+_IDEA_LEGACY_NOTE = (
+    "Deprecated for raw intake. Use capture for unstructured backlog entries. "
+    "Ideas remain for compatibility with work-unit-scoped ideation notes."
+)
+idea_app = typer.Typer(name="idea", help=_IDEA_LEGACY_NOTE)
 capture_app = typer.Typer(name="capture", help="Raw text capture backlog.")
 import_app = typer.Typer(name="import", help="Import spec/plan markdown into a luplo work_unit.")
 
@@ -1792,7 +1796,11 @@ def idea_add(
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
     actor: str | None = typer.Option(None, "--actor", "-a", envvar="LUPLO_ACTOR_ID"),
 ) -> None:
-    """Append an ideation note to a work unit (append-only, redact-only)."""
+    """Append an ideation note to a work unit (append-only, redact-only).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
+    """
     pid = _cfg_project(project)
     aid = _cfg_actor(actor)
     body = " ".join(text)
@@ -1825,7 +1833,11 @@ def idea_ls(
     ),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
-    """List ideas for a work unit, newest first."""
+    """List ideas for a work unit, newest first.
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
+    """
     pid = _cfg_project(project)
 
     async def _do() -> None:
@@ -1871,7 +1883,11 @@ def idea_find(
     limit: int = typer.Option(50, "--limit"),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
-    """Full-text search over ideas in a project. All filters are optional."""
+    """Full-text search over ideas in a project. All filters are optional.
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
+    """
     from luplo.core.timeparse import parse_since
 
     pid = _cfg_project(project)
@@ -1912,6 +1928,9 @@ def idea_redact(
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
 ) -> None:
     """Mark an idea redacted (idempotent).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
 
     ``--project`` scopes prefix resolution **and** the SQL predicate so a
     full UUID from another project cannot mutate this row. Aligned with

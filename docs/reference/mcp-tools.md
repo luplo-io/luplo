@@ -200,6 +200,21 @@ Explicitly promote a capture into a curated item.
 normal item through the existing item creation path and records a
 `capture_promotions` bridge row.
 
+## Ideas (legacy)
+
+Deprecated for raw intake. Use capture for unstructured backlog entries.
+Ideas remain for compatibility with work-unit-scoped ideation notes.
+
+The `luplo_idea_*` tools remain available for existing clients and for
+work-unit-scoped ideation trails:
+
+| Tool | Effect |
+|---|---|
+| `luplo_idea_add` | Append an ideation note to a work unit. |
+| `luplo_idea_list` | List ideas for a work unit, newest first. |
+| `luplo_idea_search` | Search ideas in a project, optionally narrowed by work unit, author, or time. |
+| `luplo_idea_redact` | Mark an idea redacted while preserving the row. |
+
 ## Audit (blast radius)
 
 ### `luplo_impact`

@@ -1085,6 +1085,9 @@ async def luplo_idea_add(
 ) -> str:
     """Append an ideation note to a work unit (append-only, redact-only).
 
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
+
     Use for half-formed thoughts, exploration trails, "what if" notes —
     anything you want to remember but is not yet a committed decision.
     Mistakes are recovered via ``luplo_idea_redact``; ideas are never
@@ -1114,6 +1117,9 @@ async def luplo_idea_list(
     include_redacted: bool = False,
 ) -> str:
     """List ideas for a work unit (newest first).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
 
     ``project_id`` is **required** to prevent an 8-char prefix collision
     with another project's WU from matching, and to add a defence-in-depth
@@ -1164,6 +1170,9 @@ async def luplo_idea_search(
     limit: int = 50,
 ) -> str:
     """Full-text search over ideas in a project (optionally narrowed by WU).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
 
     *query* and *tsquery* are mutually exclusive — pass at most one.
     Glossary expansion applies to *query*. Use *tsquery* for the raw
@@ -1245,6 +1254,9 @@ async def luplo_idea_redact(
     actor_id: str = "claude",
 ) -> str:
     """Mark an idea redacted (idempotent — no-op if already redacted).
+
+    Deprecated for raw intake. Use capture for unstructured backlog entries.
+    Ideas remain for compatibility with work-unit-scoped ideation notes.
 
     Hides the idea from default list/search results. The row and ``text``
     column are **preserved** (audit metadata, not deletion); redacted_at
