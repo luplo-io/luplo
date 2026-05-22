@@ -58,3 +58,28 @@ async def test_list_captures_hides_discarded_and_redacted_by_default(
     assert visible.id in ids
     assert discarded.id not in ids
     assert redacted.id not in ids
+
+
+async def test_local_backend_add_and_list_captures(db_url: str) -> None:
+    from luplo.core.backend.local import LocalBackend
+    from luplo.core.db import close_pool, create_pool
+
+    actor_id = "00000000-0000-0000-0000-0000000000c1"
+    pool = await create_pool(db_url)
+    try:
+        backend = LocalBackend(pool)
+        await backend.create_actor(
+            id=actor_id,
+            name="Capture Backend Actor",
+            email="capture-backend@test.com",
+        )
+        capture = await backend.add_capture(
+            text="backend raw note",
+            created_by=actor_id,
+        )
+        rows = await backend.list_captures(limit=10)
+    finally:
+        await close_pool(pool)
+
+    assert rows[0].id == capture.id
+    assert rows[0].text == "backend raw note"

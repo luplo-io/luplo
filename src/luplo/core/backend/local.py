@@ -16,6 +16,7 @@ from psycopg_pool import AsyncConnectionPool
 from luplo.core import (
     actors,
     audit,
+    captures,
     glossary,
     history,
     ideas,
@@ -39,6 +40,7 @@ from luplo.core.embedding import EmbeddingBackend, NullEmbedding
 from luplo.core.impact import ImpactResult
 from luplo.core.models import (
     Actor,
+    Capture,
     GlossaryGroup,
     GlossaryRejection,
     GlossaryTerm,
@@ -539,6 +541,58 @@ class LocalBackend:
                 system_ids=system_ids,
                 limit=limit,
                 tsquery=tsquery,
+            )
+
+    # ── Captures (raw text intake) ───────────────────────────────
+
+    async def add_capture(
+        self,
+        *,
+        text: str,
+        created_by: str | None = None,
+        summary: str | None = None,
+        sensitivity_hint: str = "none",
+        signals: dict[str, Any] | None = None,
+    ) -> Capture:
+        async with self.pool.connection() as conn:
+            capture = await captures.add_capture(
+                conn,
+                text=text,
+                created_by=created_by,
+                summary=summary,
+                sensitivity_hint=sensitivity_hint,
+                signals=signals,
+            )
+            if created_by:
+                await audit.record_audit(
+                    conn,
+                    actor_id=created_by,
+                    action="capture.create",
+                    target_type="capture",
+                    target_id=capture.id,
+                    metadata={"review_state": capture.review_state},
+                )
+            return capture
+
+    async def list_captures(
+        self,
+        *,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[Capture]:
+        async with self.pool.connection() as conn:
+            return await captures.list_captures(
+                conn,
+                review_state=review_state,
+                include_discarded=include_discarded,
+                include_redacted=include_redacted,
+                since=since,
+                until=until,
+                limit=limit,
             )
 
     # ── Glossary ─────────────────────────────────────────────────

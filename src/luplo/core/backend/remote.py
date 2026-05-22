@@ -13,6 +13,7 @@ import httpx
 
 from luplo.core.impact import ImpactEdge, ImpactNode, ImpactResult
 from luplo.core.models import (
+    Capture,
     HistoryEntry,
     Idea,
     Item,
@@ -171,6 +172,35 @@ class RemoteBackend:
         resp = await self._client.get("/search", params=params)
         resp.raise_for_status()
         return [_parse_search_result(r) for r in resp.json()]
+
+    # ── Captures (HTTP endpoints land in luplo-saas — stubs for now) ─
+
+    async def add_capture(
+        self,
+        *,
+        text: str,
+        created_by: str | None = None,
+        summary: str | None = None,
+        sensitivity_hint: str = "none",
+        signals: dict[str, Any] | None = None,
+    ) -> Capture:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
+
+    async def list_captures(
+        self,
+        *,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[Capture]:
+        raise NotImplementedError(
+            "captures are not yet exposed on the remote backend; use local mode or luplo-cloud"
+        )
 
     # ── Work Units ───────────────────────────────────────────────
 

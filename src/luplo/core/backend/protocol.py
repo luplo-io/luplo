@@ -15,6 +15,7 @@ from luplo.core.checks import Finding
 from luplo.core.impact import ImpactResult
 from luplo.core.models import (
     Actor,
+    Capture,
     GlossaryGroup,
     GlossaryRejection,
     GlossaryTerm,
@@ -167,6 +168,29 @@ class Backend(Protocol):
         Returns ``None`` when the task lacks body/summary content.
         """
         ...
+
+    # ── Captures (raw text intake) ───────────────────────────────
+
+    async def add_capture(
+        self,
+        *,
+        text: str,
+        created_by: str | None = None,
+        summary: str | None = None,
+        sensitivity_hint: str = "none",
+        signals: dict[str, Any] | None = None,
+    ) -> Capture: ...
+
+    async def list_captures(
+        self,
+        *,
+        review_state: str | None = None,
+        include_discarded: bool = False,
+        include_redacted: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[Capture]: ...
 
     # ── QA Checks (item_type='qa_check' wrapper) ─────────────────
 
