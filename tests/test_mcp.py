@@ -55,6 +55,10 @@ def test_mcp_tools_registered() -> None:
         "luplo_idea_redact",
         "luplo_capture_add",
         "luplo_capture_list",
+        "luplo_capture_search",
+        "luplo_capture_set_state",
+        "luplo_capture_discard",
+        "luplo_capture_redact",
     }
     missing = expected - tool_names
     assert not missing, f"Missing MCP tools: {missing}"
@@ -62,7 +66,7 @@ def test_mcp_tools_registered() -> None:
 
 def test_mcp_tool_count() -> None:
     tools = mcp._tool_manager.list_tools()
-    assert len(tools) == 31
+    assert len(tools) == 35
 
 
 # ── Invocation tests ────────────────────────────────────────────
@@ -610,6 +614,46 @@ async def test_mcp_capture_add_and_list(mcp_backend: Any) -> None:
 
     listed = await mcp_mod.luplo_capture_list(limit=10)
     assert "mcp raw note" in listed
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_capture_search_state_discard_and_redact(mcp_backend: Any) -> None:
+    import re
+
+    added = await mcp_mod.luplo_capture_add("mcp secret target", actor_id=_MCP_ACTOR)
+    match = re.search(r"Saved capture: ([0-9a-f]{8})", added)
+    assert match, added
+    capture_id = match.group(1)
+
+    found = await mcp_mod.luplo_capture_search(query="mcp secret")
+    assert "mcp secret target" in found
+
+    changed = await mcp_mod.luplo_capture_set_state(
+        capture_id=capture_id,
+        review_state="backlog",
+        actor_id=_MCP_ACTOR,
+    )
+    assert "backlog" in changed
+
+    discarded = await mcp_mod.luplo_capture_discard(capture_id, actor_id=_MCP_ACTOR)
+    assert "discarded" in discarded
+
+    hidden = await mcp_mod.luplo_capture_search(query="mcp secret")
+    assert "mcp secret target" not in hidden
+
+    redacted = await mcp_mod.luplo_capture_redact(capture_id, actor_id=_MCP_ACTOR)
+    assert "redacted" in redacted
+
+    listed = await mcp_mod.luplo_capture_list(include_redacted=True)
+    assert "mcp secret target" not in listed
+    assert "[redacted]" in listed
+
+    after_redact = await mcp_mod.luplo_capture_search(
+        query="mcp secret target",
+        include_redacted=True,
+    )
+    assert "mcp secret target" not in after_redact
+    assert "No captures matched." in after_redact
 
 
 @pytest.mark.asyncio(loop_scope="module")

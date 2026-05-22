@@ -918,6 +918,82 @@ async def luplo_capture_list(
     return "\n".join(lines)
 
 
+@mcp.tool()
+async def luplo_capture_search(
+    query: str = "",
+    review_state: str = "",
+    limit: int = 50,
+    include_discarded: bool = False,
+    include_redacted: bool = False,
+) -> str:
+    """Search recent captures by text and optional state."""
+    from luplo.core.errors import ValidationError
+
+    b = await _get_backend()
+    try:
+        rows = await b.search_captures(
+            query=query or None,
+            review_state=review_state or None,
+            limit=limit,
+            include_discarded=include_discarded,
+            include_redacted=include_redacted,
+        )
+    except ValidationError as exc:
+        return f"Error: {exc.message}"
+    if not rows:
+        return "No captures matched."
+    lines = [f"Found {len(rows)} capture(s):"]
+    lines.extend(_format_capture_line(row) for row in rows)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def luplo_capture_set_state(
+    capture_id: str,
+    review_state: str,
+    actor_id: str = "claude",
+) -> str:
+    """Move a capture to another review state."""
+    from luplo.core.errors import LuploDomainError
+
+    b = await _get_backend()
+    try:
+        row = await b.set_capture_state(
+            capture_id,
+            review_state=review_state,
+            actor_id=_resolve_actor(actor_id),
+        )
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Capture {row.id[:8]} -> {row.review_state}"
+
+
+@mcp.tool()
+async def luplo_capture_discard(capture_id: str, actor_id: str = "claude") -> str:
+    """Discard a capture so default list/search hides it."""
+    from luplo.core.errors import LuploDomainError
+
+    b = await _get_backend()
+    try:
+        row = await b.discard_capture(capture_id, actor_id=_resolve_actor(actor_id))
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Capture {row.id[:8]} -> {row.review_state}"
+
+
+@mcp.tool()
+async def luplo_capture_redact(capture_id: str, actor_id: str = "claude") -> str:
+    """Redact capture content from normal storage."""
+    from luplo.core.errors import LuploDomainError
+
+    b = await _get_backend()
+    try:
+        row = await b.redact_capture(capture_id, redacted_by=_resolve_actor(actor_id))
+    except LuploDomainError as exc:
+        return f"Error: {exc.message}"
+    return f"Capture {row.id[:8]} -> {row.review_state}"
+
+
 # ── Ideas (append-only ideation notes) ──────────────────────────
 
 
