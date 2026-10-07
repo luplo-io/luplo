@@ -343,6 +343,64 @@ async def luplo_work_close(
 # ── Items ────────────────────────────────────────────────────────
 
 
+async def _list_items_by_tags(
+    b: Backend,
+    project_id: str,
+    *,
+    tags: list[str],
+    item_types: list[str] | None,
+    system_ids: list[str] | None,
+    include_superseded: bool,
+    limit: int,
+) -> list[Item]:
+    """Tag-only lookup behind ``luplo_item_search(query="", tags=...)``.
+
+    ``list_items`` filters a single type/system at a time, so the list
+    filters of the search tool are applied here while paging through the
+    tag-scoped rows.
+    """
+    wanted_types = set(item_types or [])
+    wanted_systems = set(system_ids or [])
+    page = max(limit, 50)
+    found: list[Item] = []
+    offset = 0
+    while len(found) < limit:
+        rows = await b.list_items(
+            project_id,
+            tags=tags,
+            include_superseded=include_superseded,
+            limit=page,
+            offset=offset,
+        )
+        found.extend(
+            item
+            for item in rows
+            if (not wanted_types or item.item_type in wanted_types)
+            and (not wanted_systems or wanted_systems.intersection(item.system_ids))
+        )
+        if len(rows) < page:
+            break
+        offset += page
+    return found[:limit]
+
+
+def _item_preview_lines(item: Item) -> list[str]:
+    """Render one search hit: id, date, systems, tags, source, then previews."""
+    header = f"- {item.title} (id: {item.id}) — {item.created_at.date().isoformat()}"
+    if item.system_ids:
+        header += f" [{', '.join(item.system_ids)}]"
+    if item.tags:
+        header += f" · tags: {', '.join(item.tags)}"
+    if item.source_ref:
+        header += f" · source: {item.source_ref}"
+    lines = [header]
+    if item.body:
+        lines.append(f"  {item.body[:150]}")
+    if item.rationale:
+        lines.append(f"  Rationale: {item.rationale[:150]}")
+    return lines
+
+
 @mcp.tool()
 async def luplo_item_upsert(
     title: str,
@@ -357,6 +415,7 @@ async def luplo_item_upsert(
     source_url: str = "",
     expires_at: str = "",
     actor_id: str = "claude",
+    source_ref: str = "",
 ) -> str:
     """Create or update (supersede) an item.
 
@@ -379,6 +438,9 @@ async def luplo_item_upsert(
             item_type='research', defaults to now + research_ttl_days from
             config (90 days default).
         actor_id: Who created this.
+        source_ref: Where this item came from, e.g.
+            ``"raphi-runner:archive:RAP-335"``. Free-form; shown by
+            ``luplo_item_show`` and in search results.
     """
     b = await _get_backend()
 
@@ -404,6 +466,7 @@ async def luplo_item_upsert(
             work_unit_id=work_unit_id or None,
             supersedes_id=supersedes_id or None,
             source_url=source_url or None,
+            source_ref=source_ref or None,
             expires_at=expires_dt,
         )
     )
@@ -419,10 +482,12 @@ async def luplo_item_search(
     system_ids: list[str] | None = None,
     limit: int = 10,
     tsquery: str | None = None,
+    tags: list[str] | None = None,
+    include_superseded: bool = False,
 ) -> str:
     """Search items using glossary-expanded full-text search.
 
-    Two modes:
+    Two modes, plus a tag-only lookup:
 
     1. **Simple** (``query=``) — small dialect designed for humans:
        plain words AND together, ``"exact phrase"``, ``OR`` (uppercase),
@@ -438,6 +503,14 @@ async def luplo_item_search(
        Bad syntax raises an error.
 
     Pick one — when ``tsquery`` is set, ``query`` is ignored.
+
+    **Tag-only** — pass ``query=""`` with ``tags=`` to list every item
+    carrying those tags, newest first (e.g. all items of one Linear issue).
+    ``tags`` also narrows either search mode. Tags match exactly; a tag
+    value that only appears in an item's text does not count.
+
+    Items replaced by a newer version (``supersedes_id``) are hidden unless
+    ``include_superseded=True``.
 
     Examples::
 
@@ -457,28 +530,39 @@ async def luplo_item_search(
         limit: Maximum results.
         tsquery: Raw PostgreSQL ``to_tsquery`` expression. When set,
             bypasses the simple parser and glossary expansion entirely.
+        tags: Keep only items carrying all of these tags.
+        include_superseded: Also return items replaced by a newer version.
     """
     b = await _get_backend()
-    results = await b.search(
-        query,
-        project_id,
-        item_types=item_types,
-        system_ids=system_ids,
-        limit=limit,
-        tsquery=tsquery,
-    )
+    if tsquery is None and not query.strip() and tags:
+        items = await _list_items_by_tags(
+            b,
+            project_id,
+            tags=tags,
+            item_types=item_types,
+            system_ids=system_ids,
+            include_superseded=include_superseded,
+            limit=limit,
+        )
+    else:
+        results = await b.search(
+            query,
+            project_id,
+            item_types=item_types,
+            system_ids=system_ids,
+            tags=tags,
+            include_superseded=include_superseded,
+            limit=limit,
+            tsquery=tsquery,
+        )
+        items = [r.item for r in results]
 
-    if not results:
+    if not items:
         return "No results found."
 
-    lines = [f"Found {len(results)} result(s):"]
-    for r in results:
-        systems = f" [{', '.join(r.item.system_ids)}]" if r.item.system_ids else ""
-        lines.append(f"- {r.item.title} (id: {r.item.id}){systems}")
-        if r.item.body:
-            lines.append(f"  {r.item.body[:150]}")
-        if r.item.rationale:
-            lines.append(f"  Rationale: {r.item.rationale[:150]}")
+    lines = [f"Found {len(items)} result(s):"]
+    for item in items:
+        lines.extend(_item_preview_lines(item))
     lines.append("")
     lines.append("Pass any `id` above to luplo_item_show for full body + rationale.")
     return "\n".join(lines)
@@ -520,6 +604,8 @@ async def luplo_item_show(item_id: str, project_id: str) -> str:
         meta.append(f"- work_unit_id: {item.work_unit_id}")
     if item.supersedes_id:
         meta.append(f"- supersedes_id: {item.supersedes_id}")
+    if item.source_ref:
+        meta.append(f"- source_ref: {item.source_ref}")
     meta.append(f"- created_at: {item.created_at.isoformat()}")
     meta.append(f"- updated_at: {item.updated_at.isoformat()}")
     lines.extend(meta)
