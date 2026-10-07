@@ -73,6 +73,7 @@ Add an item.
 |---|---|
 | `-t`, `--type` | Filter by item type. |
 | `-s`, `--system` | Filter by system. |
+| `--tag` | Only items carrying this tag (exact match). Repeat to require several. |
 | `-n`, `--limit` | Max rows (default 20). |
 
 ### `lp items search <query>`
@@ -90,7 +91,9 @@ web-search-style dialect (full grammar in
 | `-"exact phrase"` | negated phrase |
 
 Parentheses are not parsed; use De Morgan rewrites
-(`(!A & B) & !C` → `B -A -C`). Supports `-n, --limit` (default 10).
+(`(!A & B) & !C` → `B -A -C`). Supports `-n, --limit` (default 10) and
+`--tag` (repeatable; every tag must be present). Items replaced by a
+newer version are not returned.
 
 ### `lp items show <item-id>`
 

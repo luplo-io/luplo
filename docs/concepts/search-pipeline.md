@@ -92,7 +92,11 @@ issue — parens support is a declared v0.7 candidate, not a forever
 Every search carries a `project_id`. In the CLI it comes from `.luplo`;
 in MCP it comes from the tool argument. The router can also apply a
 system filter so that "auth" queries do not drag in items from the
-"rendering" system. Nothing magical — just scoped WHERE clauses.
+"rendering" system, and a tag filter (`tags @> …`, every tag must be
+present) so that "RAP-335" means the items tagged with it, not every item
+that mentions the number. Rows replaced by a newer version
+(`supersedes_id`) are excluded unless the caller asks for them, matching
+`list_items`. Nothing magical — just scoped WHERE clauses.
 
 ### 2. Glossary expansion
 

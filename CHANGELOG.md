@@ -12,7 +12,22 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 ## [Unreleased]
 
 ### Added
-- (none)
+- `tags` filter on `search` and `list_items` (core, both backends, MCP
+  `luplo_item_search`, CLI `lp items list/search --tag`). Every given tag
+  must be present; unlike the query, a tag value that only appears in an
+  item's text does not match.
+- MCP `luplo_item_search` accepts `query=""` with `tags` to list every
+  item carrying those tags, newest first. Result lines now show the
+  creation date, tags and `source_ref`.
+- `include_superseded` on `search` and `list_items` to return rows that a
+  newer version has replaced.
+- MCP `luplo_item_upsert` accepts `source_ref`; `luplo_item_show` displays
+  it. `RemoteBackend.create_item` now sends `source_ref`.
+
+### Changed
+- **Breaking:** search no longer returns rows superseded by a newer
+  version (same chain-head rule as `list_items`). Pass
+  `include_superseded=True` for the old behaviour.
 
 ## [0.15.0] - 2026-05-22
 
