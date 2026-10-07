@@ -11,6 +11,8 @@ public CLI / MCP tool / HTTP surface becomes a stability commitment.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-07
+
 ### Added
 - `tags` filter on `search` and `list_items` (core, both backends, MCP
   `luplo_item_search`, CLI `lp items list/search --tag`). Every given tag
@@ -537,7 +539,8 @@ documented at <https://luplo.readthedocs.io>.
   <https://luplo.readthedocs.io>, including quickstart, concepts,
   guides, reference, and an autoapi-generated API reference.
 
-[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/luplo-io/luplo/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/luplo-io/luplo/releases/tag/v0.16.0
 [0.15.0]: https://github.com/luplo-io/luplo/releases/tag/v0.15.0
 [0.14.1]: https://github.com/luplo-io/luplo/releases/tag/v0.14.1
 [0.13.0]: https://github.com/luplo-io/luplo/releases/tag/v0.13.0
