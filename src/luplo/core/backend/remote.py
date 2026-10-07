@@ -82,6 +82,7 @@ class RemoteBackend:
                 "work_unit_id": data.work_unit_id,
                 "supersedes_id": data.supersedes_id,
                 "source_url": data.source_url,
+                "source_ref": data.source_ref,
                 "expires_at": data.expires_at.isoformat() if data.expires_at else None,
             },
         )
@@ -107,7 +108,9 @@ class RemoteBackend:
         item_type: str | None = None,
         system_id: str | None = None,
         work_unit_id: str | None = None,
+        tags: list[str] | None = None,
         include_deleted: bool = False,
+        include_superseded: bool = False,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Item]:
@@ -122,6 +125,10 @@ class RemoteBackend:
             params["system_id"] = system_id
         if work_unit_id:
             params["work_unit_id"] = work_unit_id
+        if tags:
+            params["tags"] = tags
+        if include_superseded:
+            params["include_superseded"] = "true"
         resp = await self._client.get("/items", params=params)
         resp.raise_for_status()
         return [_parse_item(i) for i in resp.json()]
@@ -155,6 +162,8 @@ class RemoteBackend:
         *,
         item_types: list[str] | None = None,
         system_ids: list[str] | None = None,
+        tags: list[str] | None = None,
+        include_superseded: bool = False,
         limit: int = 10,
         tsquery: str | None = None,
     ) -> list[SearchResult]:
@@ -167,6 +176,10 @@ class RemoteBackend:
             params["item_types"] = item_types
         if system_ids:
             params["system_ids"] = system_ids
+        if tags:
+            params["tags"] = tags
+        if include_superseded:
+            params["include_superseded"] = "true"
         if tsquery is not None:
             params["tsquery"] = tsquery
         resp = await self._client.get("/search", params=params)

@@ -44,16 +44,27 @@ Glossary-expanded tsquery search.
   "project_id": "myapp",
   "item_types": ["decision"],
   "system_ids": ["<uuid>"],
+  "tags": ["RAP-335"],
   "limit": 10
 }
 ```
 
-`item_types` and `system_ids` are optional filters.
+`item_types`, `system_ids` and `tags` are optional filters. `tags`
+keeps items carrying **all** of the given tags (exact match), so a tag
+value that only appears in an item's text does not count. Pass
+`"query": ""` with `tags` to list every item carrying those tags,
+newest first.
+
+Items replaced by a newer version (`supersedes_id`) are hidden; pass
+`"include_superseded": true` to see them. Each result line shows the
+item id, creation date, systems, tags and `source_ref` when set.
 
 ### `luplo_item_upsert`
 
 Create or supersede an item. The decision-memory entry point for
-explicit writes.
+explicit writes. The optional `source_ref` records where the item came
+from (e.g. `"raphi-runner:archive:RAP-335"`); `luplo_item_show` displays
+it.
 
 ### `luplo_save_decisions`
 

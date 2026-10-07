@@ -341,3 +341,179 @@ async def test_search_empty_tsquery(conn: object, seed_project: str) -> None:
     """Empty tsquery short-circuits to no results, same as empty query."""
     results = await search(conn, "anything", seed_project, tsquery="")  # type: ignore[arg-type]
     assert results == []
+
+
+# ── Tag filter + superseded exclusion ────────────────────────────
+
+
+async def _seed_tagged_items(conn: object, project: str, actor: str) -> dict[str, str]:
+    """Seed three archive-style items that all match the query ``slot``.
+
+    ``mention`` carries a different issue tag but names ``RAP-335`` in its
+    body — the case a tag filter must exclude where full-text search cannot.
+    """
+    ids: dict[str, str] = {}
+    for key, title, body, tags, item_type, systems in [
+        (
+            "tagged",
+            "Inventory slot cap",
+            "Cap at 40 slots",
+            ["linear", "RAP-335", "archive"],
+            "decision",
+            ["inventory"],
+        ),
+        (
+            "mention",
+            "Vendor slot refund",
+            "Follow-up to RAP-335 slot cap",
+            ["linear", "RAP-214", "archive"],
+            "decision",
+            ["vendor"],
+        ),
+        (
+            "gotcha",
+            "Slot cap gotcha",
+            "Slot UI reads the old cap",
+            ["linear", "RAP-335", "review-miss"],
+            "knowledge",
+            ["inventory"],
+        ),
+    ]:
+        item = await create_item(
+            conn,  # type: ignore[arg-type]
+            ItemCreate(
+                project_id=project,
+                actor_id=actor,
+                item_type=item_type,
+                title=title,
+                body=body,
+                tags=tags,
+                system_ids=systems,
+            ),
+        )
+        ids[key] = item.id
+    return ids
+
+
+@pytest.mark.asyncio
+async def test_search_filter_by_tag_excludes_body_mentions(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    ids = await _seed_tagged_items(conn, seed_project, seed_actor)
+
+    unfiltered = await search(conn, "slot", seed_project)  # type: ignore[arg-type]
+    assert {r.item.id for r in unfiltered} == set(ids.values())
+
+    results = await search(conn, "slot", seed_project, tags=["RAP-335"])  # type: ignore[arg-type]
+    assert {r.item.id for r in results} == {ids["tagged"], ids["gotcha"]}
+
+
+@pytest.mark.asyncio
+async def test_search_filter_by_multiple_tags_requires_all(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    ids = await _seed_tagged_items(conn, seed_project, seed_actor)
+
+    results = await search(
+        conn,  # type: ignore[arg-type]
+        "slot",
+        seed_project,
+        tags=["RAP-335", "review-miss"],
+    )
+    assert {r.item.id for r in results} == {ids["gotcha"]}
+
+
+@pytest.mark.asyncio
+async def test_search_empty_tag_list_does_not_filter(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    ids = await _seed_tagged_items(conn, seed_project, seed_actor)
+
+    results = await search(conn, "slot", seed_project, tags=[])  # type: ignore[arg-type]
+    assert {r.item.id for r in results} == set(ids.values())
+
+
+@pytest.mark.asyncio
+async def test_search_tag_filter_combines_with_type_and_system(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    ids = await _seed_tagged_items(conn, seed_project, seed_actor)
+
+    by_type = await search(
+        conn,  # type: ignore[arg-type]
+        "slot",
+        seed_project,
+        tags=["RAP-335"],
+        item_types=["decision"],
+    )
+    assert {r.item.id for r in by_type} == {ids["tagged"]}
+
+    by_system = await search(
+        conn,  # type: ignore[arg-type]
+        "slot",
+        seed_project,
+        tags=["archive"],
+        system_ids=["vendor"],
+    )
+    assert {r.item.id for r in by_system} == {ids["mention"]}
+
+
+@pytest.mark.asyncio
+async def test_search_excludes_superseded_by_default(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    v1 = await create_item(
+        conn,  # type: ignore[arg-type]
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Slot cap is 30",
+        ),
+    )
+    v2 = await create_item(
+        conn,  # type: ignore[arg-type]
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Slot cap is 40",
+            supersedes_id=v1.id,
+        ),
+    )
+
+    results = await search(conn, "slot", seed_project)  # type: ignore[arg-type]
+    assert {r.item.id for r in results} == {v2.id}
+
+
+@pytest.mark.asyncio
+async def test_search_include_superseded_returns_old_versions(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    v1 = await create_item(
+        conn,  # type: ignore[arg-type]
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Slot cap is 30",
+        ),
+    )
+    v2 = await create_item(
+        conn,  # type: ignore[arg-type]
+        ItemCreate(
+            project_id=seed_project,
+            actor_id=seed_actor,
+            item_type="decision",
+            title="Slot cap is 40",
+            supersedes_id=v1.id,
+        ),
+    )
+
+    results = await search(
+        conn,  # type: ignore[arg-type]
+        "slot",
+        seed_project,
+        include_superseded=True,
+    )
+    assert {r.item.id for r in results} == {v1.id, v2.id}

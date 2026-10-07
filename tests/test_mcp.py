@@ -314,6 +314,147 @@ async def test_mcp_item_search_empty(mcp_backend: Any) -> None:
     assert "No results" in out
 
 
+def _item_id_from_upsert(out: str) -> str:
+    # `luplo_item_upsert` returns "Created <type>: <title> (id: <uuid>)"
+    return out.rsplit("id: ", 1)[1].rstrip(")").strip()
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_item_search_tags_without_query(mcp_backend: Any) -> None:
+    import re
+
+    tag = f"RAP-{uuid.uuid4().hex[:8]}"
+    for title, body, tags in [
+        ("Tagged decision", "first", ["linear", tag]),
+        ("Tagged gotcha", "second", ["linear", tag, "review-miss"]),
+        ("Body mention only", f"follow-up of {tag}", ["linear", "RAP-other"]),
+    ]:
+        await mcp_mod.luplo_item_upsert(
+            title=title,
+            project_id=_MCP_PROJECT,
+            body=body,
+            tags=tags,
+            actor_id=_MCP_ACTOR,
+        )
+
+    out = await mcp_mod.luplo_item_search(query="", project_id=_MCP_PROJECT, tags=[tag])
+    assert "Found 2 result(s)" in out
+    assert "Tagged decision" in out
+    assert "Tagged gotcha" in out
+    assert "Body mention only" not in out
+    assert f"tags: linear, {tag}, review-miss" in out
+    assert re.search(r"\(id: [0-9a-f-]+\) — \d{4}-\d{2}-\d{2}", out)
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_item_search_tags_without_query_filters_item_types(mcp_backend: Any) -> None:
+    tag = f"RAP-{uuid.uuid4().hex[:8]}"
+    for title, item_type in [("Tag decision", "decision"), ("Tag knowledge", "knowledge")]:
+        await mcp_mod.luplo_item_upsert(
+            title=title,
+            project_id=_MCP_PROJECT,
+            item_type=item_type,
+            tags=[tag],
+            actor_id=_MCP_ACTOR,
+        )
+
+    out = await mcp_mod.luplo_item_search(
+        query="", project_id=_MCP_PROJECT, tags=[tag], item_types=["knowledge"]
+    )
+    assert "Tag knowledge" in out
+    assert "Tag decision" not in out
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_item_search_tags_without_query_pages_past_filtered_rows(
+    mcp_backend: Any,
+) -> None:
+    """The tag-only lookup pages through list_items until the filter fills ``limit``.
+
+    The single knowledge item is the oldest, so the first page (50 newest
+    rows, all decisions) holds no match and the lookup must fetch page two.
+    """
+    tag = f"RAP-{uuid.uuid4().hex[:8]}"
+    await mcp_mod.luplo_item_upsert(
+        title="Oldest knowledge",
+        project_id=_MCP_PROJECT,
+        item_type="knowledge",
+        tags=[tag],
+        actor_id=_MCP_ACTOR,
+    )
+    for i in range(50):
+        await mcp_mod.luplo_item_upsert(
+            title=f"Newer decision {i}",
+            project_id=_MCP_PROJECT,
+            tags=[tag],
+            actor_id=_MCP_ACTOR,
+        )
+
+    out = await mcp_mod.luplo_item_search(
+        query="", project_id=_MCP_PROJECT, tags=[tag], item_types=["knowledge"], limit=1
+    )
+    assert "Found 1 result(s)" in out
+    assert "Oldest knowledge" in out
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_item_search_query_with_tags(mcp_backend: Any) -> None:
+    tag = f"RAP-{uuid.uuid4().hex[:8]}"
+    word = f"w{uuid.uuid4().hex[:8]}"
+    await mcp_mod.luplo_item_upsert(
+        title=f"{word} tagged", project_id=_MCP_PROJECT, tags=[tag], actor_id=_MCP_ACTOR
+    )
+    await mcp_mod.luplo_item_upsert(
+        title=f"{word} untagged", project_id=_MCP_PROJECT, actor_id=_MCP_ACTOR
+    )
+
+    out = await mcp_mod.luplo_item_search(query=word, project_id=_MCP_PROJECT, tags=[tag])
+    assert f"{word} tagged" in out
+    assert f"{word} untagged" not in out
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_item_search_superseded_hidden_unless_requested(mcp_backend: Any) -> None:
+    word = f"w{uuid.uuid4().hex[:8]}"
+    v1 = await mcp_mod.luplo_item_upsert(
+        title=f"{word} old", project_id=_MCP_PROJECT, actor_id=_MCP_ACTOR
+    )
+    await mcp_mod.luplo_item_upsert(
+        title=f"{word} new",
+        project_id=_MCP_PROJECT,
+        supersedes_id=_item_id_from_upsert(v1),
+        actor_id=_MCP_ACTOR,
+    )
+
+    default = await mcp_mod.luplo_item_search(query=word, project_id=_MCP_PROJECT)
+    assert f"{word} new" in default
+    assert f"{word} old" not in default
+
+    both = await mcp_mod.luplo_item_search(
+        query=word, project_id=_MCP_PROJECT, include_superseded=True
+    )
+    assert f"{word} old" in both
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_mcp_item_source_ref_round_trip(mcp_backend: Any) -> None:
+    word = f"w{uuid.uuid4().hex[:8]}"
+    add = await mcp_mod.luplo_item_upsert(
+        title=f"{word} archived",
+        project_id=_MCP_PROJECT,
+        source_ref="raphi-runner:archive:RAP-335",
+        actor_id=_MCP_ACTOR,
+    )
+
+    shown = await mcp_mod.luplo_item_show(
+        item_id=_item_id_from_upsert(add), project_id=_MCP_PROJECT
+    )
+    assert "- source_ref: raphi-runner:archive:RAP-335" in shown
+
+    found = await mcp_mod.luplo_item_search(query=word, project_id=_MCP_PROJECT)
+    assert "source: raphi-runner:archive:RAP-335" in found
+
+
 @pytest.mark.asyncio(loop_scope="module")
 async def test_mcp_brief_and_keyword(mcp_backend: Any) -> None:
     brief = await mcp_mod.luplo_brief(project_id=_MCP_PROJECT)

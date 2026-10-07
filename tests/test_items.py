@@ -341,6 +341,73 @@ async def test_list_items_returns_chain_head_only(
 
 
 @pytest.mark.asyncio
+async def test_list_items_include_superseded_returns_whole_chain(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    v1 = await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="V1"),
+    )
+    v2 = await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="V2", supersedes_id=v1.id),
+    )
+
+    items = await list_items(
+        conn,  # type: ignore[arg-type]
+        seed_project,
+        include_superseded=True,
+    )
+    assert {i.id for i in items} == {v1.id, v2.id}
+
+
+@pytest.mark.asyncio
+async def test_list_items_filter_by_tags(conn: object, seed_project: str, seed_actor: str) -> None:
+    tagged = await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="Tagged", tags=["RAP-335", "archive"]),
+    )
+    await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(
+            seed_project,
+            seed_actor,
+            title="Mentions RAP-335 only in body",
+            body="See RAP-335",
+            tags=["RAP-214", "archive"],
+        ),
+    )
+
+    items = await list_items(
+        conn,  # type: ignore[arg-type]
+        seed_project,
+        tags=["RAP-335"],
+    )
+    assert [i.id for i in items] == [tagged.id]
+
+
+@pytest.mark.asyncio
+async def test_list_items_filter_by_multiple_tags_requires_all(
+    conn: object, seed_project: str, seed_actor: str
+) -> None:
+    both = await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="Both", tags=["RAP-335", "review-miss"]),
+    )
+    await create_item(
+        conn,  # type: ignore[arg-type]
+        _decision(seed_project, seed_actor, title="One", tags=["RAP-335"]),
+    )
+
+    items = await list_items(
+        conn,  # type: ignore[arg-type]
+        seed_project,
+        tags=["RAP-335", "review-miss"],
+    )
+    assert [i.id for i in items] == [both.id]
+
+
+@pytest.mark.asyncio
 async def test_list_items_pagination(conn: object, seed_project: str, seed_actor: str) -> None:
     for i in range(5):
         await create_item(

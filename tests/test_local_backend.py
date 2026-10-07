@@ -296,3 +296,84 @@ async def test_link_through_backend(backend: LocalBackend) -> None:
 
     found = await backend.get_links(a.id, direction="from")
     assert len(found) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_items_through_backend_filters_tags_and_superseded(
+    backend: LocalBackend,
+) -> None:
+    pid = _uid()
+    aid = _uid()
+    await backend.create_project(id=pid, name=f"proj-{pid[:8]}")
+    await backend.create_actor(id=aid, name="Actor")
+
+    v1 = await backend.create_item(
+        ItemCreate(
+            project_id=pid, actor_id=aid, item_type="decision", title="V1", tags=["RAP-335"]
+        )
+    )
+    v2 = await backend.create_item(
+        ItemCreate(
+            project_id=pid,
+            actor_id=aid,
+            item_type="decision",
+            title="V2",
+            tags=["RAP-335"],
+            supersedes_id=v1.id,
+        )
+    )
+    await backend.create_item(
+        ItemCreate(project_id=pid, actor_id=aid, item_type="decision", title="Other")
+    )
+
+    heads = await backend.list_items(pid, tags=["RAP-335"])
+    assert [i.id for i in heads] == [v2.id]
+
+    chain = await backend.list_items(pid, tags=["RAP-335"], include_superseded=True)
+    assert {i.id for i in chain} == {v1.id, v2.id}
+
+
+@pytest.mark.asyncio
+async def test_search_through_backend_filters_tags_and_superseded(
+    backend: LocalBackend,
+) -> None:
+    pid = _uid()
+    aid = _uid()
+    await backend.create_project(id=pid, name=f"proj-{pid[:8]}")
+    await backend.create_actor(id=aid, name="Actor")
+
+    v1 = await backend.create_item(
+        ItemCreate(
+            project_id=pid,
+            actor_id=aid,
+            item_type="decision",
+            title="Slot cap 30",
+            tags=["RAP-335"],
+        )
+    )
+    v2 = await backend.create_item(
+        ItemCreate(
+            project_id=pid,
+            actor_id=aid,
+            item_type="decision",
+            title="Slot cap 40",
+            tags=["RAP-335"],
+            supersedes_id=v1.id,
+        )
+    )
+    await backend.create_item(
+        ItemCreate(
+            project_id=pid,
+            actor_id=aid,
+            item_type="decision",
+            title="Slot refund",
+            body="Mentions RAP-335",
+            tags=["RAP-214"],
+        )
+    )
+
+    heads = await backend.search("slot", pid, tags=["RAP-335"])
+    assert [r.item.id for r in heads] == [v2.id]
+
+    chain = await backend.search("slot", pid, tags=["RAP-335"], include_superseded=True)
+    assert {r.item.id for r in chain} == {v1.id, v2.id}

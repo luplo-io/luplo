@@ -61,15 +61,16 @@ def _seed_item(
     title: str = "Seed item",
     item_type: str = "decision",
     rationale: str | None = None,
+    tags: list[str] | None = None,
 ) -> str:
     """Insert an item directly and return its full UUID."""
     item_id = str(uuid.uuid4())
     with psycopg.connect(db_url) as conn:
         conn.execute(
             "INSERT INTO items (id, project_id, item_type, title, rationale, actor_id, "
-            "search_tsv) "
-            "VALUES (%s, %s, %s, %s, %s, %s, to_tsvector('simple', %s))",
-            (item_id, _CLI_PROJECT, item_type, title, rationale, _CLI_ACTOR, title),
+            "tags, search_tsv) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, to_tsvector('simple', %s))",
+            (item_id, _CLI_PROJECT, item_type, title, rationale, _CLI_ACTOR, tags, title),
         )
         conn.commit()
     return item_id
@@ -123,6 +124,31 @@ def test_items_search(env: dict[str, str]) -> None:
     result = runner.invoke(app, ["items", "search", "vendor"], env=env)
     assert result.exit_code == 0
     assert "vendor" in result.output.lower()
+
+
+def test_items_list_filters_by_tag(env: dict[str, str], db_url: str) -> None:
+    tag = f"RAP-{uuid.uuid4().hex[:8]}"
+    _seed_item(db_url, title="Tagged for list", tags=[tag, "archive"])
+    _seed_item(db_url, title="Untagged for list", tags=["archive"])
+
+    result = runner.invoke(app, ["items", "list", "--tag", tag], env=env)
+    assert result.exit_code == 0
+    assert "Tagged for list" in result.output
+    assert "Untagged for list" not in result.output
+
+
+def test_items_search_filters_by_tags(env: dict[str, str], db_url: str) -> None:
+    tag = f"RAP-{uuid.uuid4().hex[:8]}"
+    word = f"w{uuid.uuid4().hex[:8]}"
+    _seed_item(db_url, title=f"{word} both tags", tags=[tag, "review-miss"])
+    _seed_item(db_url, title=f"{word} one tag", tags=[tag])
+
+    result = runner.invoke(
+        app, ["items", "search", word, "--tag", tag, "--tag", "review-miss"], env=env
+    )
+    assert result.exit_code == 0
+    assert f"{word} both tags" in result.output
+    assert f"{word} one tag" not in result.output
 
 
 def test_work_open_and_close(env: dict[str, str]) -> None:

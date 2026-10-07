@@ -506,10 +506,17 @@ class Backend(Protocol):
         item_type: str | None = None,
         system_id: str | None = None,
         work_unit_id: str | None = None,
+        tags: list[str] | None = None,
         include_deleted: bool = False,
+        include_superseded: bool = False,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[Item]: ...
+    ) -> list[Item]:
+        """List items, newest first. Only chain heads unless *include_superseded*.
+
+        *tags* keeps items carrying all of the given tags (exact match).
+        """
+        ...
 
     async def delete_item(self, id: str, *, actor_id: str) -> None:
         """Soft delete — sets deleted_at, never removes the row."""
@@ -579,11 +586,15 @@ class Backend(Protocol):
         *,
         item_types: list[str] | None = None,
         system_ids: list[str] | None = None,
+        tags: list[str] | None = None,
+        include_superseded: bool = False,
         limit: int = 10,
         tsquery: str | None = None,
     ) -> list[SearchResult]:
         """Full pipeline: glossary expand → tsquery → vector rerank.
 
+        *tags* keeps items carrying all of the given tags (exact match).
+        Superseded rows are excluded unless *include_superseded* is set.
         When *tsquery* is set, the simple-dialect parser and glossary
         expansion are bypassed; the string is passed straight to PostgreSQL
         ``to_tsquery``. Caller owns synonym coverage and syntax validity.

@@ -461,6 +461,9 @@ def items_list(
         "-w",
         help="Filter to items attached to this work unit (full UUID or 8+ char hex prefix).",
     ),
+    tag: list[str] | None = typer.Option(
+        None, "--tag", help="Only items carrying this tag. Repeat to require several."
+    ),
     limit: int = typer.Option(20, "--limit", "-n"),
 ) -> None:
     """List items for a project."""
@@ -473,6 +476,7 @@ def items_list(
                 item_type=item_type,
                 system_id=system,
                 work_unit_id=work_unit,
+                tags=tag,
                 limit=limit,
             )
             if not results:
@@ -489,6 +493,9 @@ def items_list(
 def items_search(
     query: str = typer.Argument(..., help="Search query."),
     project: str | None = typer.Option(None, "--project", "-p", envvar="LUPLO_PROJECT"),
+    tag: list[str] | None = typer.Option(
+        None, "--tag", help="Only items carrying this tag. Repeat to require several."
+    ),
     limit: int = typer.Option(10, "--limit", "-n"),
 ) -> None:
     """Search items using glossary-expanded tsquery."""
@@ -496,7 +503,7 @@ def items_search(
 
     async def _do() -> None:
         async with _backend() as b:
-            results = await b.search(query, pid, limit=limit)
+            results = await b.search(query, pid, tags=tag, limit=limit)
             if not results:
                 typer.echo("No results.")
                 return

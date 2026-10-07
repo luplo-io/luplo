@@ -254,7 +254,9 @@ async def list_items(
     item_type: str | None = None,
     system_id: str | None = None,
     work_unit_id: str | None = None,
+    tags: list[str] | None = None,
     include_deleted: bool = False,
+    include_superseded: bool = False,
     limit: int = 100,
     offset: int = 0,
 ) -> list[Item]:
@@ -266,25 +268,31 @@ async def list_items(
         item_type: Filter by ``item_type`` (e.g. ``"decision"``).
         system_id: Filter items whose ``system_ids`` array contains this value.
         work_unit_id: Filter by ``work_unit_id``.
+        tags: Keep only items carrying **all** of these tags (exact match).
         include_deleted: If ``True``, include soft-deleted items.
+        include_superseded: If ``True``, also return rows that a newer
+            version has superseded. By default only chain heads are
+            returned.
         limit: Maximum rows returned (default 100).
         offset: Pagination offset.
 
     Returns:
         List of ``Item`` ordered by ``created_at DESC``.
     """
-    conditions: list[sql.Composable] = [
-        sql.SQL("project_id = %(project_id)s"),
-        # Only return chain heads — rows with no successor. Intermediate
-        # supersede rows would let callers copy a stale ID into a new
-        # supersede call, breaking the head-identity contract.
-        sql.SQL("NOT EXISTS (SELECT 1 FROM items s WHERE s.supersedes_id = items.id)"),
-    ]
+    conditions: list[sql.Composable] = [sql.SQL("project_id = %(project_id)s")]
     params: dict[str, Any] = {
         "project_id": project_id,
         "limit": limit,
         "offset": offset,
     }
+
+    if not include_superseded:
+        # Only return chain heads — rows with no successor. Intermediate
+        # supersede rows would let callers copy a stale ID into a new
+        # supersede call, breaking the head-identity contract.
+        conditions.append(
+            sql.SQL("NOT EXISTS (SELECT 1 FROM items s WHERE s.supersedes_id = items.id)")
+        )
 
     if not include_deleted:
         conditions.append(sql.SQL("deleted_at IS NULL"))
@@ -296,6 +304,10 @@ async def list_items(
     if system_id is not None:
         conditions.append(sql.SQL("%(system_id)s = ANY(system_ids)"))
         params["system_id"] = system_id
+
+    if tags:
+        conditions.append(sql.SQL("tags @> %(tags)s"))
+        params["tags"] = tags
 
     if work_unit_id is not None:
         resolved_wu_filter = await _resolve_work_unit_id(conn, work_unit_id, project_id)
