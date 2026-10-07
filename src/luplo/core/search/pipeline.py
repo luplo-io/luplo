@@ -32,6 +32,8 @@ async def search(
     embedding_backend: EmbeddingBackend | None = None,
     item_types: list[str] | None = None,
     system_ids: list[str] | None = None,
+    tags: list[str] | None = None,
+    include_superseded: bool = False,
     limit: int = 10,
     tsquery: str | None = None,
 ) -> list[SearchResult]:
@@ -52,6 +54,12 @@ async def search(
         embedding_backend: Embedding backend for reranking (default null).
         item_types: Filter by item types (e.g. ``["decision", "knowledge"]``).
         system_ids: Filter by system membership.
+        tags: Keep only items carrying **all** of these tags (exact match).
+            Unlike the query, this never matches a tag value that merely
+            appears in the title or body.
+        include_superseded: If ``True``, also return rows that a newer
+            version has superseded. By default only chain heads are
+            returned, matching ``list_items``.
         limit: Maximum results to return.
         tsquery: Optional escape hatch — a raw PostgreSQL ``to_tsquery``
             expression (e.g. ``"(inventory | 인벤토리) & slot & !deprecated"``).
@@ -99,6 +107,8 @@ async def search(
         project_id,
         item_types=item_types,
         system_ids=system_ids,
+        tags=tags,
+        include_superseded=include_superseded,
         limit=fetch_limit,
     )
 
@@ -124,6 +134,8 @@ async def _tsquery_search(
     *,
     item_types: list[str] | None = None,
     system_ids: list[str] | None = None,
+    tags: list[str] | None = None,
+    include_superseded: bool = False,
     limit: int = 30,
 ) -> list[SearchResult]:
     """Run a tsquery search with ts_rank scoring."""
@@ -145,6 +157,15 @@ async def _tsquery_search(
     if system_ids:
         conditions.append(sql.SQL("system_ids && %(system_ids)s"))
         params["system_ids"] = system_ids
+
+    if tags:
+        conditions.append(sql.SQL("tags @> %(tags)s"))
+        params["tags"] = tags
+
+    if not include_superseded:
+        conditions.append(
+            sql.SQL("NOT EXISTS (SELECT 1 FROM items s WHERE s.supersedes_id = items.id)")
+        )
 
     where = sql.SQL(" AND ").join(conditions)
     columns = sql.SQL(", ").join(sql.Identifier(c) for c in ITEM_COLUMNS)

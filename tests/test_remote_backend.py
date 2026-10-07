@@ -177,6 +177,26 @@ async def test_create_item_serializes_fields() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_item_sends_source_ref() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["source_ref"] == "raphi-runner:archive:RAP-335"
+        return httpx.Response(201, json=_item_payload("i1", "p1", "Hello"))
+
+    b = _make_backend(httpx.MockTransport(handle))
+    await b.create_item(
+        ItemCreate(
+            project_id="p1",
+            actor_id="a1",
+            item_type="decision",
+            title="Hello",
+            source_ref="raphi-runner:archive:RAP-335",
+        )
+    )
+    await b.close()
+
+
+@pytest.mark.asyncio
 async def test_get_item_with_project_param() -> None:
     def handle(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/items/i2"
@@ -220,6 +240,36 @@ async def test_list_items_with_filters() -> None:
     assert "item_type=decision" in captured["params"]
     assert "system_id=s1" in captured["params"]
     assert "work_unit_id=w1" in captured["params"]
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_list_items_sends_tags_and_include_superseded() -> None:
+    captured: dict[str, httpx.QueryParams] = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        captured["params"] = request.url.params
+        return httpx.Response(200, json=[])
+
+    b = _make_backend(httpx.MockTransport(handle))
+    await b.list_items("p1", tags=["RAP-335", "archive"], include_superseded=True)
+    assert captured["params"].get_list("tags") == ["RAP-335", "archive"]
+    assert captured["params"].get("include_superseded") == "true"
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_list_items_omits_new_filters_by_default() -> None:
+    captured: dict[str, httpx.QueryParams] = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        captured["params"] = request.url.params
+        return httpx.Response(200, json=[])
+
+    b = _make_backend(httpx.MockTransport(handle))
+    await b.list_items("p1")
+    assert "tags" not in captured["params"]
+    assert "include_superseded" not in captured["params"]
     await b.close()
 
 
@@ -304,6 +354,36 @@ async def test_search_with_filters() -> None:
     assert len(rows) == 1
     assert rows[0].item.title == "Vendor rule"
     assert rows[0].score == 0.87
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_search_sends_tags_and_include_superseded() -> None:
+    captured: dict[str, httpx.QueryParams] = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        captured["params"] = request.url.params
+        return httpx.Response(200, json=[])
+
+    b = _make_backend(httpx.MockTransport(handle))
+    await b.search("slot", "p1", tags=["RAP-335"], include_superseded=True)
+    assert captured["params"].get_list("tags") == ["RAP-335"]
+    assert captured["params"].get("include_superseded") == "true"
+    await b.close()
+
+
+@pytest.mark.asyncio
+async def test_search_omits_new_filters_by_default() -> None:
+    captured: dict[str, httpx.QueryParams] = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        captured["params"] = request.url.params
+        return httpx.Response(200, json=[])
+
+    b = _make_backend(httpx.MockTransport(handle))
+    await b.search("slot", "p1")
+    assert "tags" not in captured["params"]
+    assert "include_superseded" not in captured["params"]
     await b.close()
 
 

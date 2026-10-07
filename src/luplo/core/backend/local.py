@@ -412,7 +412,9 @@ class LocalBackend:
         item_type: str | None = None,
         system_id: str | None = None,
         work_unit_id: str | None = None,
+        tags: list[str] | None = None,
         include_deleted: bool = False,
+        include_superseded: bool = False,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Item]:
@@ -423,7 +425,9 @@ class LocalBackend:
                 item_type=item_type,
                 system_id=system_id,
                 work_unit_id=work_unit_id,
+                tags=tags,
                 include_deleted=include_deleted,
+                include_superseded=include_superseded,
                 limit=limit,
                 offset=offset,
             )
@@ -528,6 +532,8 @@ class LocalBackend:
         *,
         item_types: list[str] | None = None,
         system_ids: list[str] | None = None,
+        tags: list[str] | None = None,
+        include_superseded: bool = False,
         limit: int = 10,
         tsquery: str | None = None,
     ) -> list[SearchResult]:
@@ -539,6 +545,8 @@ class LocalBackend:
                 embedding_backend=self._embedding,
                 item_types=item_types,
                 system_ids=system_ids,
+                tags=tags,
+                include_superseded=include_superseded,
                 limit=limit,
                 tsquery=tsquery,
             )
